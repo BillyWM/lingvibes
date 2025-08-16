@@ -1,62 +1,75 @@
-import React, { useState } from 'react'
-import { saveFileToDir } from '../lib/fs'
+import React, { useState, useEffect } from "react";
 
-export default function EditScreen({ dirHandle, cards, saveCards, setScreen, card }) {
-  const [word, setWord] = useState(card.word)
-  const [newImages, setNewImages] = useState([])       // newly added image files
-  const [newAudio, setNewAudio] = useState(null)        // optional new audio
+export default function EditScreen({ card, onSave, onCancel }) {
+  const [word, setWord] = useState("");
+  const [images, setImages] = useState([]);
+  const [audio, setAudio] = useState(null);
 
-  const handleSave = async () => {
-    if (!word.trim()) {
-      alert('Enter a word')
-      return
+  useEffect(() => {
+    if (card) {
+      setWord(card.word || "");
+      setImages(card.images || []);
+      setAudio(card.audio || null);
     }
+  }, [card]);
 
-    // Keep existing image paths; append any new images the user selected
-    const imagePaths = [...(card.images || [])]
-    for (const f of newImages) {
-      imagePaths.push(await saveFileToDir(dirHandle, 'images', f))
+  const handleImageChange = (e) => {
+    if (e.target.files) {
+      setImages(Array.from(e.target.files).map((f) => URL.createObjectURL(f)));
     }
+  };
 
-    // Replace audio only if a new file was chosen
-    let audioPath = card.audio || null
-    if (newAudio) {
-      audioPath = await saveFileToDir(dirHandle, 'audio', newAudio)
+  const handleAudioChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setAudio(URL.createObjectURL(e.target.files[0]));
     }
+  };
 
-    const updated = cards.map(c =>
-      c.id === card.id ? { ...c, word: word.trim(), images: imagePaths, audio: audioPath } : c
-    )
-    await saveCards(updated)
-    setScreen('review')
-  }
+  const handleSave = () => {
+    const updatedCard = { word, images, audio };
+    if (onSave) onSave(updatedCard);
+  };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2>Edit Card</h2>
-      <div style={{ marginBottom: 12 }}>
-        <label>Word</label><br />
-        <input value={word} onChange={e => setWord(e.target.value)} style={{ width: 320 }} />
+    <div style={{ padding: "1rem" }}>
+      <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
+        Edit Card
+      </h2>
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Word:
+          <input
+            type="text"
+            value={word}
+            onChange={(e) => setWord(e.target.value)}
+            style={{ marginLeft: "0.5rem" }}
+          />
+        </label>
       </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ marginBottom: 6, color: '#555' }}>
-          Current images: {card.images?.length || 0}
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Images:
+          <input type="file" accept="image/*" multiple onChange={handleImageChange} />
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+          {images.map((img, idx) => (
+            <img key={idx} src={img} alt={`preview-${idx}`} style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "4px" }} />
+          ))}
         </div>
-        <label>Add more images</label><br />
-        <input type="file" accept="image/*" multiple onChange={e => setNewImages([...e.target.files])} />
       </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ marginBottom: 6, color: '#555' }}>
-          {card.audio ? 'Audio present' : 'No audio yet'}
-        </div>
-        <label>Replace audio (optional)</label><br />
-        <input type="file" accept="audio/*" onChange={e => setNewAudio(e.target.files[0] ?? null)} />
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Audio:
+          <input type="file" accept="audio/*" onChange={handleAudioChange} />
+        </label>
+        {audio && <div>Selected: {audio}</div>}
       </div>
-
-      <button onClick={handleSave}>Save</button>{' '}
-      <button onClick={() => setScreen('review')}>Cancel</button>
+      <button onClick={handleSave} style={{ padding: "0.5rem 1rem", cursor: "pointer", marginRight: "0.5rem" }}>
+        Save
+      </button>
+      <button onClick={onCancel} style={{ padding: "0.5rem 1rem", cursor: "pointer" }}>
+        Cancel
+      </button>
     </div>
-  )
+  );
 }

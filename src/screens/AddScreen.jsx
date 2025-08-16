@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-export default function AddScreen({ onAdd }) {
+export default function AddScreen({ onAddCard, onDone }) {
   const [word, setWord] = useState("");
   const [images, setImages] = useState([]);
   const [audio, setAudio] = useState(null);
@@ -25,18 +25,17 @@ export default function AddScreen({ onAdd }) {
 
     const newCard = {
       word,
-      images: images.map((file) => URL.createObjectURL(file)),
+      images: images.map((f) => URL.createObjectURL(f)),
       audio: audio ? URL.createObjectURL(audio) : null
     };
 
-    if (onAdd) {
-      onAdd(newCard);
-    }
+    if (onAddCard) onAddCard(newCard);
 
-    // reset form
     setWord("");
     setImages([]);
     setAudio(null);
+
+    if (onDone) onDone();
   };
 
   return (
@@ -44,7 +43,6 @@ export default function AddScreen({ onAdd }) {
       <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
         Add New Card
       </h2>
-
       <div style={{ marginBottom: "0.5rem" }}>
         <label>
           Word:
@@ -56,19 +54,12 @@ export default function AddScreen({ onAdd }) {
           />
         </label>
       </div>
-
       <div style={{ marginBottom: "0.5rem" }}>
         <label>
           Images:
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleImageChange}
-            style={{ display: "block", marginTop: "0.25rem" }}
-          />
+          <input type="file" accept="image/*" multiple onChange={handleImageChange} />
         </label>
-        <div style={{ display: "flex", flexWrap: "wrap", marginTop: "0.5rem", gap: "0.5rem" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
           {images.map((file, idx) => (
             <img
               key={idx}
@@ -79,20 +70,13 @@ export default function AddScreen({ onAdd }) {
           ))}
         </div>
       </div>
-
       <div style={{ marginBottom: "0.5rem" }}>
         <label>
           Audio:
-          <input
-            type="file"
-            accept="audio/*"
-            onChange={handleAudioChange}
-            style={{ display: "block", marginTop: "0.25rem" }}
-          />
+          <input type="file" accept="audio/*" onChange={handleAudioChange} />
         </label>
         {audio && <div>Selected: {audio.name}</div>}
       </div>
-
       <button onClick={handleSubmit} style={{ padding: "0.5rem 1rem", cursor: "pointer" }}>
         Add Card
       </button>

@@ -1,24 +1,14 @@
-import React from 'react'
+import React from "react";
 
-export default function ListScreen({ cards, onEdit, setScreen }) {
+export default function ListScreen({ cards = [], onEdit }) {
   return (
-    <div style={{ padding: 16 }}>
-      <h2>All Cards</h2>
-      {cards.length === 0 && <p>No cards yet.</p>}
-      <ul style={{ listStyle: 'none', padding: 0 }}>
-        {cards.map(c => (
-          <li key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '8px 0' }}>
-            <span>{c.word}</span>
-            <span>
-              <button onClick={() => onEdit(c.id)} style={{ marginRight: 8 }}>Edit</button>
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <div style={{ marginTop: 12 }}>
-        <button onClick={() => setScreen('add')}>Add Card</button>
-      </div>
+    <div style={{ padding: "1rem" }}>
+      {cards.map((card, idx) => (
+        <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", alignItems: "center" }}>
+          <span>{card.word}</span>
+          <button onClick={() => onEdit(idx)}>Edit</button>
+        </div>
+      ))}
     </div>
-  )
+  );
 }

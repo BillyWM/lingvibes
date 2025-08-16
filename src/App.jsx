@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ReviewScreen from "./screens/ReviewScreen.jsx";
 import AddScreen from "./screens/AddScreen.jsx";
 import EditScreen from "./screens/EditScreen.jsx";
-import CardListScreen from "./screens/ListScreen.jsx";
+import ListScreen from "./screens/ListScreen.jsx"; // fixed import
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -18,51 +18,104 @@ function App() {
 
   let content;
   if (screen === "review") {
-    content = <ReviewScreen />;
+    content = <ReviewScreen cards={cards} />;
   } else if (screen === "add") {
-    content = <AddScreen onAddCard={(newCard) => setCards((prev) => [...prev, newCard])} onDone={() => navigate("cards")} />
-  } else if (screen === "edit") {
     content = (
-      <EditScreen cardId={editingCardId} onDone={() => navigate("cards")} />
+      <AddScreen
+        onAddCard={(newCard) => setCards((prev) => [...prev, newCard])}
+        onDone={() => navigate("cards")}
+      />
+    );
+  } else if (screen === "edit") {
+    const cardToEdit = cards[editingCardId] || null;
+    content = (
+      <EditScreen
+        card={cardToEdit}
+        onSave={(updatedCard) => {
+          setCards((prev) =>
+            prev.map((c, idx) => (idx === editingCardId ? updatedCard : c))
+          );
+          navigate("cards");
+        }}
+        onCancel={() => navigate("cards")}
+      />
     );
   } else if (screen === "cards") {
-    content = <CardListScreen cards={cards} onEdit={(id) => navigate("edit", id)} />
+    content = (
+      <ListScreen
+        cards={cards}
+        onEdit={(id) => navigate("edit", id)}
+      />
+    );
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       {/* Top Bar */}
-      <header className="flex items-center bg-gray-800 text-white px-4 py-2">
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          background: "#333",
+          color: "#fff",
+          padding: "0.5rem 1rem"
+        }}
+      >
         <button
-          className="mr-4"
           onClick={() => setMenuOpen((prev) => !prev)}
+          style={{ marginRight: "1rem", cursor: "pointer" }}
         >
           ☰
         </button>
-        <h1 className="text-lg font-bold">Flashcards</h1>
+        <h1 style={{ fontSize: "1.25rem", fontWeight: "bold" }}>Flashcards</h1>
       </header>
 
       {/* Sidebar Menu */}
       {menuOpen && (
-        <nav className="absolute top-0 left-0 w-48 h-full bg-gray-700 text-white shadow-lg p-4 z-10">
-          <ul className="space-y-2">
+        <nav
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "200px",
+            height: "100%",
+            background: "#555",
+            color: "#fff",
+            padding: "1rem",
+            zIndex: 10
+          }}
+        >
+          <ul style={{ listStyle: "none", padding: 0 }}>
             <li>
-              <button onClick={() => navigate("review")}>Review</button>
+              <button
+                onClick={() => navigate("review")}
+                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
+              >
+                Review
+              </button>
             </li>
             <li>
-              <button onClick={() => navigate("cards")}>Card List</button>
+              <button
+                onClick={() => navigate("cards")}
+                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
+              >
+                Card List
+              </button>
             </li>
             <li>
-              <button onClick={() => navigate("add")}>Add Card</button>
+              <button
+                onClick={() => navigate("add")}
+                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
+              >
+                Add Card
+              </button>
             </li>
           </ul>
         </nav>
       )}
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        {content}
-      </main>
+      <main style={{ flex: 1, overflowY: "auto" }}>{content}</main>
     </div>
   );
 }
