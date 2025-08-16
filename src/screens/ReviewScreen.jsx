@@ -1,131 +1,129 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { useDrag } from '@use-gesture/react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { getFileURLFromPath } from '../lib/fs'
+import React, { useState, useEffect, useRef } from "react";
+import { useGesture } from "@use-gesture/react";
 
-export default function ReviewScreen({ dirHandle, cards, setScreen }) {
-  const [index, setIndex] = useState(0)
-  const [imageUrls, setImageUrls] = useState([])
-  const [audioUrl, setAudioUrl] = useState(null)
-  const [direction, setDirection] = useState(1) // 1=forward, -1=back
-  const audioRef = useRef(null)
-
-  const loadAssets = async (card) => {
-    // Load images
-    const urls = await Promise.all(
-      (card.images || []).map(p => getFileURLFromPath(dirHandle, p))
-    )
-    setImageUrls(urls)
-
-    // Load audio
-    if (card.audio) {
-      const aurl = await getFileURLFromPath(dirHandle, card.audio)
-      setAudioUrl(aurl)
-      // autoplay may be blocked until user interacts; tap anywhere to replay
-      if (audioRef.current) {
-        audioRef.current.src = aurl
-        try { await audioRef.current.play() } catch {}
-      }
-    } else {
-      setAudioUrl(null)
-      if (audioRef.current) audioRef.current.src = ''
-    }
-  }
+export default function ReviewScreen({ cards = [] }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const card = cards[currentIndex] || null;
+  const audioRef = useRef(null);
+  const [style, setStyle] = useState({
+    transform: "translateX(0px) rotate(0deg)",
+    opacity: 1,
+    transition: "none"
+  });
 
   useEffect(() => {
-    if (cards.length === 0) return
-    loadAssets(cards[index])
-    return () => {
-      imageUrls.forEach(u => URL.revokeObjectURL(u))
-      if (audioUrl) URL.revokeObjectURL(audioUrl)
+    if (card?.audio) {
+      const audio = new Audio(card.audio);
+      audioRef.current = audio;
+      audio.play();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, cards])
+  }, [card]);
 
-  const next = () => {
-    if (cards.length === 0) return
-    setDirection(1)
-    setIndex(i => (i + 1) % cards.length)
-  }
-  const prev = () => {
-    if (cards.length === 0) return
-    setDirection(-1)
-    setIndex(i => (i - 1 + cards.length) % cards.length)
-  }
+  const animateCard = (x, rotate, callback) => {
+    setStyle({
+      transform: `translateX(${x}px) rotate(${rotate}deg)`,
+      opacity: 0,
+      transition: "transform 0.2s ease, opacity 0.2s ease"
+    });
+    setTimeout(() => {
+      callback();
+      setStyle({
+        transform: `translateX(${-x}px) rotate(${-rotate}deg)`,
+        opacity: 0,
+        transition: "none"
+      });
+      setTimeout(() => {
+        setStyle({
+          transform: "translateX(0px) rotate(0deg)",
+          opacity: 1,
+          transition: "transform 0.2s ease, opacity 0.2s ease"
+        });
+      }, 10);
+    }, 200);
+  };
 
-  const bind = useDrag(
-    ({ swipe: [sx] }) => {
-      if (sx === -1) next()
-      if (sx === 1) prev()
+  const nextCard = () => {
+    animateCard(300, 15, () => {
+      setCurrentIndex((i) => (i + 1) % cards.length);
+    });
+  };
+
+  const prevCard = () => {
+    animateCard(-300, -15, () => {
+      setCurrentIndex((i) =>
+        i === 0 ? cards.length - 1 : i - 1
+      );
+    });
+  };
+
+  const bind = useGesture(
+    {
+      onDragEnd: ({ swipe: [swipeX] }) => {
+        if (swipeX < 0) {
+          nextCard();
+        } else if (swipeX > 0) {
+          prevCard();
+        }
+      }
     },
-    { swipeDistance: [50, 50], swipeVelocity: 0.2 }
-  )
+    {
+      swipe: { velocity: 0.5 }
+    }
+  );
 
-  if (cards.length === 0) {
-    return (
-      <div style={{ padding: 16 }}>
-        <p>No cards yet.</p>
-        <button onClick={() => setScreen('add')}>Add a card</button>
-      </div>
-    )
+  const handleReplayAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      audioRef.current.play();
+    }
+  };
+
+  if (!card) {
+    return <div style={{ padding: "1rem" }}>No cards available.</div>;
   }
-
-  const card = cards[index]
 
   return (
     <div
-      {...bind()}
       style={{
-        height: 'calc(100vh - 56px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        overflow: 'hidden',
-        background: '#fafafa',
-        touchAction: 'pan-y'
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem"
       }}
-      onClick={() => audioRef.current?.play()}
     >
-      {/* Left/right click zones */}
-      <div onClick={prev} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '40%' }} />
-      <div onClick={next} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '60%' }} />
-
-      <AnimatePresence mode="wait" custom={direction}>
-        <motion.div
-          key={card.id ?? index}
-          custom={direction}
-          initial={{ opacity: 0, x: direction > 0 ? 120 : -120, rotate: direction * 4 }}
-          animate={{ opacity: 1, x: 0, rotate: 0 }}
-          exit={{ opacity: 0, x: direction > 0 ? -180 : 180, rotate: direction * -8 }}
-          transition={{ duration: 0.28, ease: 'easeOut' }}
-          style={{
-            background: '#fff',
-            borderRadius: 16,
-            boxShadow: '0 10px 24px rgba(0,0,0,0.10)',
-            padding: 20,
-            width: 'min(720px, 92vw)',
-            maxHeight: '84vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center'
-          }}
-        >
-          <h1 style={{ margin: '0 0 12px', fontSize: 28 }}>{card.word}</h1>
-          <div style={{ overflowY: 'auto', width: '100%' }}>
-            {imageUrls.map((url, i) => (
-              <img
-                key={i}
-                src={url}
-                alt={`${card.word}-${i}`}
-                style={{ display: 'block', maxWidth: '100%', margin: '8px auto', borderRadius: 8 }}
-              />
-            ))}
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      <audio ref={audioRef} hidden />
+      <div
+        {...bind()}
+        style={{
+          ...style,
+          maxWidth: "400px",
+          width: "100%",
+          background: "#fff",
+          borderRadius: "12px",
+          boxShadow: "0 10px 20px rgba(0,0,0,0.15)",
+          padding: "1rem",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          cursor: "pointer",
+          touchAction: "pan-y"
+        }}
+        onClick={handleReplayAudio}
+      >
+        <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
+          {card.word}
+        </h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          {card.images?.map((src, idx) => (
+            <img
+              key={idx}
+              src={src}
+              alt={`image-${idx}`}
+              style={{ maxWidth: "100%", borderRadius: "8px" }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
-  )
+  );
 }

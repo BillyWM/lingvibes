@@ -1,51 +1,101 @@
-import React, { useState } from 'react'
-import { saveFileToDir } from '../lib/fs'
+import React, { useState } from "react";
 
-export default function AddScreen({ dirHandle, cards, saveCards, setScreen }) {
-  const [word, setWord] = useState('')
-  const [imageFiles, setImageFiles] = useState([])
-  const [audioFile, setAudioFile] = useState(null)
+export default function AddScreen({ onAdd }) {
+  const [word, setWord] = useState("");
+  const [images, setImages] = useState([]);
+  const [audio, setAudio] = useState(null);
 
-  const handleSave = async () => {
-    if (!word.trim()) {
-      alert('Enter a word')
-      return
+  const handleImageChange = (e) => {
+    if (e.target.files) {
+      setImages(Array.from(e.target.files));
+    }
+  };
+
+  const handleAudioChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setAudio(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (!word) {
+      alert("Please enter a word.");
+      return;
     }
 
-    const imagePaths = []
-    for (const f of imageFiles) {
-      imagePaths.push(await saveFileToDir(dirHandle, 'images', f))
+    const newCard = {
+      word,
+      images: images.map((file) => URL.createObjectURL(file)),
+      audio: audio ? URL.createObjectURL(audio) : null
+    };
+
+    if (onAdd) {
+      onAdd(newCard);
     }
 
-    let audioPath = null
-    if (audioFile) audioPath = await saveFileToDir(dirHandle, 'audio', audioFile)
-
-    const newCard = { id: crypto.randomUUID(), word: word.trim(), images: imagePaths, audio: audioPath }
-    const next = [...cards, newCard]
-    await saveCards(next)
-    setScreen('review')
-  }
+    // reset form
+    setWord("");
+    setImages([]);
+    setAudio(null);
+  };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2>Add Card</h2>
-      <div style={{ marginBottom: 12 }}>
-        <label>Word</label><br />
-        <input value={word} onChange={e => setWord(e.target.value)} style={{ width: 320 }} />
+    <div style={{ padding: "1rem" }}>
+      <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
+        Add New Card
+      </h2>
+
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Word:
+          <input
+            type="text"
+            value={word}
+            onChange={(e) => setWord(e.target.value)}
+            style={{ marginLeft: "0.5rem" }}
+          />
+        </label>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label>Images (multiple)</label><br />
-        <input type="file" accept="image/*" multiple onChange={e => setImageFiles([...e.target.files])} />
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Images:
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageChange}
+            style={{ display: "block", marginTop: "0.25rem" }}
+          />
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", marginTop: "0.5rem", gap: "0.5rem" }}>
+          {images.map((file, idx) => (
+            <img
+              key={idx}
+              src={URL.createObjectURL(file)}
+              alt={`preview-${idx}`}
+              style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "4px" }}
+            />
+          ))}
+        </div>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label>Audio (single)</label><br />
-        <input type="file" accept="audio/*" onChange={e => setAudioFile(e.target.files[0] ?? null)} />
+      <div style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Audio:
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={handleAudioChange}
+            style={{ display: "block", marginTop: "0.25rem" }}
+          />
+        </label>
+        {audio && <div>Selected: {audio.name}</div>}
       </div>
 
-      <button onClick={handleSave}>Save</button>{' '}
-      <button onClick={() => setScreen('review')}>Cancel</button>
+      <button onClick={handleSubmit} style={{ padding: "0.5rem 1rem", cursor: "pointer" }}>
+        Add Card
+      </button>
     </div>
-  )
+  );
 }

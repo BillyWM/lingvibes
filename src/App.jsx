@@ -1,92 +1,70 @@
-import React, { useEffect, useState, useMemo } from 'react'
-import { get, set } from 'idb-keyval'
-import { ensurePersistence, readMetadata, writeMetadata } from './lib/fs'
-import ReviewScreen from './screens/ReviewScreen'
-import AddScreen from './screens/AddScreen'
-import EditScreen from './screens/EditScreen'
-import ListScreen from './screens/ListScreen'
+import React, { useState } from "react";
+import ReviewScreen from "./screens/ReviewScreen.jsx";
+import AddScreen from "./screens/AddScreen.jsx";
+import EditScreen from "./screens/EditScreen.jsx";
+import CardListScreen from "./screens/ListScreen.jsx";
 
-export default function App() {
-  const [dirHandle, setDirHandle] = useState(null)
-  const [cards, setCards] = useState([])
-  const [screen, setScreen] = useState('review') // review | add | list | edit
-  const [editingId, setEditingId] = useState(null)
-  const editingCard = useMemo(() => cards.find(c => c.id === editingId) || null, [cards, editingId])
+function App() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [screen, setScreen] = useState("review");
+  const [editingCardId, setEditingCardId] = useState(null);
+  const [cards, setCards] = useState([]);
 
-  // load dir handle & metadata
-  useEffect(() => {
-    (async () => {
-      await ensurePersistence()
-      const saved = await get('flashcard-dir')
-      if (saved) {
-        try {
-          const perm = await saved.queryPermission({ mode: 'readwrite' })
-          if (perm === 'granted' || perm === 'prompt') {
-            setDirHandle(saved)
-            const meta = await readMetadata(saved)
-            setCards(meta)
-          }
-        } catch (e) {
-          console.warn('Saved directory handle invalid:', e)
-        }
-      }
-    })()
-  }, [])
+  const navigate = (target, id = null) => {
+    setMenuOpen(false);
+    setEditingCardId(id);
+    setScreen(target);
+  };
 
-  const pickDirectory = async () => {
-    try {
-      const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
-      await set('flashcard-dir', handle)
-      setDirHandle(handle)
-      setCards(await readMetadata(handle))
-    } catch (e) {
-      console.error('User cancelled or blocked directory:', e)
-    }
-  }
-
-  const saveCards = async (next) => {
-    setCards(next)
-    await writeMetadata(dirHandle, next)
-  }
-
-  const goEdit = (id) => { setEditingId(id); setScreen('edit') }
-
-  if (!dirHandle) {
-    return (
-      <div style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-        <h1>Flashcards</h1>
-        <p>Pick a folder to store your cards (images/audio + metadata.json).</p>
-        <button onClick={pickDirectory}>Pick storage directory</button>
-      </div>
-    )
+  let content;
+  if (screen === "review") {
+    content = <ReviewScreen />;
+  } else if (screen === "add") {
+    content = <AddScreen onAddCard={(newCard) => setCards((prev) => [...prev, newCard])} onDone={() => navigate("cards")} />
+  } else if (screen === "edit") {
+    content = (
+      <EditScreen cardId={editingCardId} onDone={() => navigate("cards")} />
+    );
+  } else if (screen === "cards") {
+    content = <CardListScreen cards={cards} onEdit={(id) => navigate("edit", id)} />
   }
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif' }}>
-      <TopNav setScreen={setScreen} />
-      {screen === 'review' && (
-        <ReviewScreen dirHandle={dirHandle} cards={cards} setScreen={setScreen} />
+    <div className="h-screen flex flex-col">
+      {/* Top Bar */}
+      <header className="flex items-center bg-gray-800 text-white px-4 py-2">
+        <button
+          className="mr-4"
+          onClick={() => setMenuOpen((prev) => !prev)}
+        >
+          ☰
+        </button>
+        <h1 className="text-lg font-bold">Flashcards</h1>
+      </header>
+
+      {/* Sidebar Menu */}
+      {menuOpen && (
+        <nav className="absolute top-0 left-0 w-48 h-full bg-gray-700 text-white shadow-lg p-4 z-10">
+          <ul className="space-y-2">
+            <li>
+              <button onClick={() => navigate("review")}>Review</button>
+            </li>
+            <li>
+              <button onClick={() => navigate("cards")}>Card List</button>
+            </li>
+            <li>
+              <button onClick={() => navigate("add")}>Add Card</button>
+            </li>
+          </ul>
+        </nav>
       )}
-      {screen === 'add' && (
-        <AddScreen dirHandle={dirHandle} cards={cards} saveCards={saveCards} setScreen={setScreen} />
-      )}
-      {screen === 'list' && (
-        <ListScreen cards={cards} onEdit={goEdit} setScreen={setScreen} />
-      )}
-      {screen === 'edit' && editingCard && (
-        <EditScreen dirHandle={dirHandle} cards={cards} saveCards={saveCards} setScreen={setScreen} card={editingCard} />
-      )}
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto">
+        {content}
+      </main>
     </div>
-  )
+  );
 }
 
-function TopNav({ setScreen }) {
-  const btn = { padding: '8px 12px', marginRight: 8, borderRadius: 8, border: '1px solid #ccc', background: '#fff' }
-  return (
-    <div style={{ padding: 8, position: 'sticky', top: 0, background: '#f7f7f7', borderBottom: '1px solid #eee', zIndex: 10 }}>
-      <button style={btn} onClick={() => setScreen('review')}>Review</button>
-      <button style={btn} onClick={() => setScreen('add')}>Add</button>
-      <button style={btn} onClick={() => setScreen('list')}>List</button>
-    </div>
-  )
-}
+export default App;
