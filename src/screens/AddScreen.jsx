@@ -5,81 +5,52 @@ export default function AddScreen({ onAddCard, onDone }) {
   const [images, setImages] = useState([]);
   const [audio, setAudio] = useState(null);
 
-  const handleImageChange = (e) => {
-    if (e.target.files) {
-      setImages(Array.from(e.target.files));
-    }
-  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!word) return;
 
-  const handleAudioChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setAudio(e.target.files[0]);
-    }
-  };
-
-  const handleSubmit = () => {
-    if (!word) {
-      alert("Please enter a word.");
-      return;
-    }
-
-    const newCard = {
-      word,
-      images: images.map((f) => URL.createObjectURL(f)),
-      audio: audio ? URL.createObjectURL(audio) : null
-    };
-
-    if (onAddCard) onAddCard(newCard);
-
+    await onAddCard({ word }, { images, audio });
     setWord("");
     setImages([]);
     setAudio(null);
-
-    if (onDone) onDone();
+    onDone();
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
-        Add New Card
-      </h2>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Word:
-          <input
-            type="text"
-            value={word}
-            onChange={(e) => setWord(e.target.value)}
-            style={{ marginLeft: "0.5rem" }}
-          />
-        </label>
+    <form onSubmit={handleSubmit} style={{ padding: "1rem" }}>
+      <div>
+        <label>Word:</label>
+        <input
+          type="text"
+          value={word}
+          onChange={(e) => setWord(e.target.value)}
+          required
+          style={{ marginLeft: "0.5rem" }}
+        />
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Images:
-          <input type="file" accept="image/*" multiple onChange={handleImageChange} />
-        </label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-          {images.map((file, idx) => (
-            <img
-              key={idx}
-              src={URL.createObjectURL(file)}
-              alt={`preview-${idx}`}
-              style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "4px" }}
-            />
-          ))}
-        </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>Images:</label>
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={(e) => setImages(Array.from(e.target.files))}
+        />
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Audio:
-          <input type="file" accept="audio/*" onChange={handleAudioChange} />
-        </label>
-        {audio && <div>Selected: {audio.name}</div>}
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>Audio:</label>
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => setAudio(e.target.files[0])}
+        />
       </div>
-      <button onClick={handleSubmit} style={{ padding: "0.5rem 1rem", cursor: "pointer" }}>
+
+      <button type="submit" style={{ marginTop: "1rem" }}>
         Add Card
       </button>
-    </div>
+    </form>
   );
 }

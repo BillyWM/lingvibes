@@ -1,95 +1,114 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useDrag } from "@use-gesture/react";
+import React, { useState, useRef, useEffect } from "react";
+import { useGesture } from "@use-gesture/react";
 
-export default function ReviewScreen({ cards = [] }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+function ReviewScreen({ cards }) {
+  const [index, setIndex] = useState(0);
+  const [dragX, setDragX] = useState(0);
   const audioRef = useRef(null);
 
-  const card = cards[currentIndex] || null;
+  const card = cards[index] || null;
 
+  // Auto-play audio when card changes
   useEffect(() => {
-    if (card && card.audio) {
-      if (audioRef.current) {
-        audioRef.current.src = card.audio;
-        audioRef.current.play().catch(() => {});
-      }
+    if (card && card.audio && audioRef.current) {
+      audioRef.current.src = card.audio;
+      audioRef.current.play().catch(() => {});
     }
   }, [card]);
 
-  const nextCard = () => {
-    setCurrentIndex((prev) => (prev + 1) % cards.length);
-  };
+  const bind = useGesture({
+    onDrag: ({ down, movement: [mx], direction: [xDir], velocity }) => {
+      if (!card) return;
+
+      if (!down) {
+        if (Math.abs(mx) > 100 || velocity > 0.5) {
+          if (xDir > 0) {
+            // swipe right = previous
+            setIndex((i) => Math.max(0, i - 1));
+          } else {
+            // swipe left = next
+            setIndex((i) => Math.min(cards.length - 1, i + 1));
+          }
+        }
+        setDragX(0);
+      } else {
+        setDragX(mx);
+      }
+    },
+  });
 
   const prevCard = () => {
-    setCurrentIndex((prev) => (prev - 1 + cards.length) % cards.length);
+    setIndex((i) => Math.max(0, i - 1));
   };
 
-  const bind = useDrag(
-    ({ swipe: [swipeX] }) => {
-      if (swipeX === 1) prevCard();
-      if (swipeX === -1) nextCard();
-    },
-    { swipe: { velocity: 0.5 } }
-  );
+  const nextCard = () => {
+    setIndex((i) => Math.min(cards.length - 1, i + 1));
+  };
 
-  if (!card) return <div style={{ padding: "1rem" }}>No cards available.</div>;
+  if (!card) {
+    return <div style={{ padding: "1rem" }}>No cards to review</div>;
+  }
 
   return (
-    <div
-      {...bind()}
-      style={{ padding: "1rem", textAlign: "center", position: "relative", userSelect: "none" }}
-    >
-      <h2 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>{card.word}</h2>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: "0.5rem",
-          flexWrap: "wrap"
-        }}
-      >
-        {card.images?.map((img, idx) => (
-          <img
-            key={idx}
-            src={img}
-            alt={`card-${idx}`}
-            style={{ maxWidth: "200px", borderRadius: "4px" }}
-          />
-        ))}
-      </div>
-      <audio ref={audioRef} hidden />
-
-      {/* Left click zone */}
+    <div style={{ position: "relative", flex: 1, height: "100%", overflow: "hidden" }}>
+      {/* Left clickable region */}
       <div
         onClick={prevCard}
         style={{
           position: "absolute",
-          top: "25%",           // start 25% down
-          bottom: "25%",        // end 25% from bottom
           left: 0,
-          width: "25%",
+          top: 0,
+          width: "20%",
+          height: "100%",
+          zIndex: 1,
           cursor: "pointer",
-          zIndex: 5,
-          background: "transparent",
-          pointerEvents: "auto",
         }}
       />
 
-      {/* Right click zone */}
+      {/* Right clickable region */}
       <div
         onClick={nextCard}
         style={{
           position: "absolute",
-          top: "25%",           // start 25% down
-          bottom: "25%",        // end 25% from bottom
           right: 0,
-          width: "25%",
+          top: 0,
+          width: "20%",
+          height: "100%",
+          zIndex: 1,
           cursor: "pointer",
-          zIndex: 5,
-          background: "transparent",
-          pointerEvents: "auto",
         }}
       />
+
+      {/* Card */}
+      <div
+        {...bind()}
+        style={{
+          transform: `translateX(${dragX}px)`,
+          transition: dragX === 0 ? "transform 0.2s ease" : "none",
+          width: "60%",
+          maxWidth: "500px",
+          margin: "0 auto",
+          textAlign: "center",
+          padding: "1rem",
+          boxShadow: "0 4px 8px rgba(0,0,0,0.2)",
+          borderRadius: "8px",
+          background: "#fff",
+          position: "relative",
+          top: "50%",
+          transformOrigin: "center",
+          userSelect: "none",
+        }}
+      >
+        <h2 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>{card.word}</h2>
+        <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+          {card.images.map((src, i) => (
+            <img key={i} src={src} alt="" style={{ maxWidth: "100px", maxHeight: "100px" }} />
+          ))}
+        </div>
+        <audio ref={audioRef} hidden />
+      </div>
     </div>
   );
 }
+
+export default ReviewScreen;

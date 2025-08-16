@@ -7,69 +7,60 @@ export default function EditScreen({ card, onSave, onCancel }) {
 
   useEffect(() => {
     if (card) {
-      setWord(card.word || "");
-      setImages(card.images || []);
-      setAudio(card.audio || null);
+      setWord(card.word);
+      setImages([]); // new files to replace existing images
+      setAudio(null);
     }
   }, [card]);
 
-  const handleImageChange = (e) => {
-    if (e.target.files) {
-      setImages(Array.from(e.target.files).map((f) => URL.createObjectURL(f)));
-    }
-  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!word) return;
 
-  const handleAudioChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setAudio(URL.createObjectURL(e.target.files[0]));
-    }
-  };
-
-  const handleSave = () => {
-    const updatedCard = { word, images, audio };
-    if (onSave) onSave(updatedCard);
+    await onSave(
+      { ...card, word },
+      { images, audio }
+    );
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
-      <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "0.5rem" }}>
-        Edit Card
-      </h2>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Word:
-          <input
-            type="text"
-            value={word}
-            onChange={(e) => setWord(e.target.value)}
-            style={{ marginLeft: "0.5rem" }}
-          />
-        </label>
+    <form onSubmit={handleSubmit} style={{ padding: "1rem" }}>
+      <div>
+        <label>Word:</label>
+        <input
+          type="text"
+          value={word}
+          onChange={(e) => setWord(e.target.value)}
+          required
+          style={{ marginLeft: "0.5rem" }}
+        />
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Images:
-          <input type="file" accept="image/*" multiple onChange={handleImageChange} />
-        </label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-          {images.map((img, idx) => (
-            <img key={idx} src={img} alt={`preview-${idx}`} style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "4px" }} />
-          ))}
-        </div>
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>New Images (optional):</label>
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={(e) => setImages(Array.from(e.target.files))}
+        />
       </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Audio:
-          <input type="file" accept="audio/*" onChange={handleAudioChange} />
-        </label>
-        {audio && <div>Selected: {audio}</div>}
+
+      <div style={{ marginTop: "1rem" }}>
+        <label>New Audio (optional):</label>
+        <input
+          type="file"
+          accept="audio/*"
+          onChange={(e) => setAudio(e.target.files[0])}
+        />
       </div>
-      <button onClick={handleSave} style={{ padding: "0.5rem 1rem", cursor: "pointer", marginRight: "0.5rem" }}>
+
+      <button type="submit" style={{ marginTop: "1rem", marginRight: "0.5rem" }}>
         Save
       </button>
-      <button onClick={onCancel} style={{ padding: "0.5rem 1rem", cursor: "pointer" }}>
+      <button type="button" onClick={onCancel} style={{ marginTop: "1rem" }}>
         Cancel
       </button>
-    </div>
+    </form>
   );
 }
