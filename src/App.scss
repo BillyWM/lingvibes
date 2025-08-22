@@ -1,0 +1,115 @@
+.app-root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  background: #333;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  position: relative;
+  z-index: 2;
+}
+
+/* Larger, thumb-friendly hamburger button */
+.app-menu-button {
+  margin-right: 1rem;
+  cursor: pointer;
+  background: #444;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.app-menu-button:hover,
+.app-menu-button:focus {
+  background: #555;
+}
+
+.app-menu-button:active {
+  background: #666;
+}
+
+.app-title {
+  font-size: 1.25rem;
+  font-weight: bold;
+  margin: 0;
+}
+
+/* Sliding side menu */
+.app-menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 100%;
+  background: #555;
+  color: #fff;
+  padding: 1rem;
+  z-index: 10;
+
+  transform: translateX(-105%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+
+.app-menu.open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-menu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Bigger, more touch-friendly menu items */
+.app-menu-item {
+  display: block;
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 500;
+  text-align: left;
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  background: #666;
+  color: #fff;
+  cursor: pointer;
+}
+
+.app-menu-item:hover,
+.app-menu-item:focus {
+  background: #777;
+}
+
+.app-menu-item:active {
+  background: #888;
+}
+
+/* Main area */
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Folder picker view */
+.app-picker {
+  padding: 1rem;
+}
+
+.app-action {
+  margin-top: 0.5rem;
+  cursor: pointer;
+}

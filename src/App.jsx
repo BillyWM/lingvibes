@@ -4,12 +4,12 @@ import AddScreen from "./screens/AddScreen.jsx";
 import EditScreen from "./screens/EditScreen.jsx";
 import ListScreen from "./screens/ListScreen.jsx";
 import { openDB } from "idb";
+import "./App.scss";
 
-let directoryHandle = null; // session folder handle
+let directoryHandle = null;
 
-// -------------------- IndexedDB helpers --------------------
+// ----- IndexedDB helpers -----
 async function getDB() {
-  // bump version to 2 to ensure upgrade runs if store missing
   return await openDB("flashcards", 2, {
     upgrade(db) {
       if (!db.objectStoreNames.contains("handles")) {
@@ -36,7 +36,7 @@ async function getSavedDirectoryHandle() {
   return null;
 }
 
-// -------------------- Folder picker --------------------
+// ----- Folder picker -----
 async function pickDirectory() {
   if (!window.showDirectoryPicker) {
     alert("Your browser does not support the File System Access API.");
@@ -47,7 +47,7 @@ async function pickDirectory() {
   return directoryHandle;
 }
 
-// -------------------- Load cards --------------------
+// ----- Load cards -----
 async function loadCardsFromDirectory() {
   if (!directoryHandle) return [];
 
@@ -60,7 +60,6 @@ async function loadCardsFromDirectory() {
         const text = await (await cardFile.getFile()).text();
         const cardData = JSON.parse(text);
 
-        // convert relative file paths to Object URLs
         cardData.images = await Promise.all(
           cardData.images.map(async (name) => {
             const f = await cardFolder.getFileHandle(name);
@@ -83,7 +82,6 @@ async function loadCardsFromDirectory() {
   return loadedCards;
 }
 
-// -------------------- App Component --------------------
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [screen, setScreen] = useState("review");
@@ -108,7 +106,6 @@ function App() {
     setScreen(target);
   };
 
-  // -------------------- Add Card --------------------
   const handleAddCard = async (newCard, files) => {
     if (!directoryHandle) return;
 
@@ -147,7 +144,6 @@ function App() {
     await writable.write(JSON.stringify(cardData));
     await writable.close();
 
-    // convert media to Object URLs for immediate use
     cardData.images = cardData.images.map(
       (name) => URL.createObjectURL(files.images.find((f) => f.name === name))
     );
@@ -156,7 +152,6 @@ function App() {
     setCards((prev) => [...prev, cardData]);
   };
 
-  // -------------------- Edit/Save Card --------------------
   const handleSaveCard = async (updatedCard, files) => {
     if (!directoryHandle) return;
     if (!updatedCard.folderName) return;
@@ -203,23 +198,37 @@ function App() {
     );
   };
 
-  // -------------------- Render --------------------
   if (!folderReady) {
     return (
-      <div style={{ padding: "1rem" }}>
-        <p>No folder selected. Please choose a folder to store your flashcards:</p>
-        <button
-          onClick={async () => {
-            const handle = await pickDirectory();
-            if (handle) {
-              const loaded = await loadCardsFromDirectory();
-              setCards(loaded);
-              setFolderReady(true);
-            }
-          }}
-        >
-          Select Folder
-        </button>
+      <div className="app-root">
+        <header className="app-header">
+          <button
+            className="app-menu-button"
+            onClick={() => setMenuOpen((p) => !p)}
+          >
+            ☰
+          </button>
+          <h1 className="app-title">Flashcards</h1>
+        </header>
+
+        <main className="app-main">
+          <div className="app-picker">
+            <p>No folder selected. Please choose a folder to store your flashcards:</p>
+            <button
+              className="app-action"
+              onClick={async () => {
+                const handle = await pickDirectory();
+                if (handle) {
+                  const loaded = await loadCardsFromDirectory();
+                  setCards(loaded);
+                  setFolderReady(true);
+                }
+              }}
+            >
+              Select Folder
+            </button>
+          </div>
+        </main>
       </div>
     );
   }
@@ -228,12 +237,7 @@ function App() {
   if (screen === "review") {
     content = <ReviewScreen cards={cards} />;
   } else if (screen === "add") {
-    content = (
-      <AddScreen
-        onAddCard={handleAddCard}
-        onDone={() => navigate("cards")}
-      />
-    );
+    content = <AddScreen onAddCard={handleAddCard} onDone={() => navigate("cards")} />;
   } else if (screen === "edit") {
     const cardToEdit = cards[editingCardId] || null;
     content = (
@@ -251,61 +255,36 @@ function App() {
   }
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          background: "#333",
-          color: "#fff",
-          padding: "0.5rem 1rem"
-        }}
-      >
+    <div className="app-root">
+      <header className="app-header">
         <button
+          className="app-menu-button"
           onClick={() => setMenuOpen((prev) => !prev)}
-          style={{ marginRight: "1rem", cursor: "pointer" }}
         >
           ☰
         </button>
-        <h1 style={{ fontSize: "1.25rem", fontWeight: "bold" }}>Flashcards</h1>
+        <h1 className="app-title">Flashcards</h1>
       </header>
 
+      {/* Sidebar Menu (slides in/out) */}
       {menuOpen && (
         <nav
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "200px",
-            height: "100%",
-            background: "#555",
-            color: "#fff",
-            padding: "1rem",
-            zIndex: 10
-          }}
+          className={`app-menu ${menuOpen ? "open" : ""}`}
+          aria-hidden={!menuOpen}
         >
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul className="app-menu-list">
             <li>
-              <button
-                onClick={() => navigate("review")}
-                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
-              >
+              <button className="app-menu-item" onClick={() => navigate("review")}>
                 Review
               </button>
             </li>
             <li>
-              <button
-                onClick={() => navigate("cards")}
-                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
-              >
+              <button className="app-menu-item" onClick={() => navigate("cards")}>
                 Card List
               </button>
             </li>
             <li>
-              <button
-                onClick={() => navigate("add")}
-                style={{ display: "block", margin: "0.5rem 0", cursor: "pointer" }}
-              >
+              <button className="app-menu-item" onClick={() => navigate("add")}>
                 Add Card
               </button>
             </li>
@@ -313,7 +292,7 @@ function App() {
         </nav>
       )}
 
-      <main style={{ flex: 1, overflowY: "auto" }}>{content}</main>
+      <main className="app-main">{content}</main>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import "./EditScreen.scss";
 
 export default function EditScreen({ card, onSave, onCancel }) {
   const [word, setWord] = useState("");
@@ -7,8 +8,8 @@ export default function EditScreen({ card, onSave, onCancel }) {
 
   useEffect(() => {
     if (card) {
-      setWord(card.word);
-      setImages([]); // new files to replace existing images
+      setWord(card.word || "");
+      setImages([]);
       setAudio(null);
     }
   }, [card]);
@@ -17,28 +18,26 @@ export default function EditScreen({ card, onSave, onCancel }) {
     e.preventDefault();
     if (!word) return;
 
-    await onSave(
-      { ...card, word },
-      { images, audio }
-    );
+    await onSave({ ...card, word }, { images, audio });
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ padding: "1rem" }}>
-      <div>
-        <label>Word:</label>
+    <form className="edit-root" onSubmit={handleSubmit}>
+      <div className="edit-row">
+        <label className="edit-label">Word:</label>
         <input
+          className="edit-input"
           type="text"
           value={word}
           onChange={(e) => setWord(e.target.value)}
           required
-          style={{ marginLeft: "0.5rem" }}
         />
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
-        <label>New Images (optional):</label>
+      <div className="edit-row">
+        <label className="edit-label">New Images:</label>
         <input
+          className="edit-file"
           type="file"
           multiple
           accept="image/*"
@@ -46,21 +45,31 @@ export default function EditScreen({ card, onSave, onCancel }) {
         />
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
-        <label>New Audio (optional):</label>
+      <div className="edit-previews">
+        {images.map((file, idx) => (
+          <img
+            key={idx}
+            src={URL.createObjectURL(file)}
+            alt={`preview-${idx}`}
+            className="edit-preview-image"
+          />
+        ))}
+      </div>
+
+      <div className="edit-row">
+        <label className="edit-label">New Audio:</label>
         <input
+          className="edit-file"
           type="file"
           accept="audio/*"
           onChange={(e) => setAudio(e.target.files[0])}
         />
       </div>
 
-      <button type="submit" style={{ marginTop: "1rem", marginRight: "0.5rem" }}>
-        Save
-      </button>
-      <button type="button" onClick={onCancel} style={{ marginTop: "1rem" }}>
-        Cancel
-      </button>
+      <div className="edit-actions">
+        <button className="edit-save" type="submit">Save</button>
+        <button className="edit-cancel" type="button" onClick={onCancel}>Cancel</button>
+      </div>
     </form>
   );
 }

@@ -1,24 +1,16 @@
 import React from "react";
+import "./ListScreen.scss";
 
 export default function ListScreen({ cards, onEdit }) {
   return (
-    <div style={{ padding: "1rem" }}>
-      <h2>Card List</h2>
-      {cards.length === 0 && <p>No cards added yet.</p>}
-      <ul style={{ listStyle: "none", padding: 0 }}>
+    <div className="list-root">
+      <h2 className="list-title">Card List</h2>
+      {cards.length === 0 && <p className="list-empty">No cards added yet.</p>}
+      <ul className="list-list">
         {cards.map((card, index) => (
-          <li
-            key={index}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "0.5rem 0",
-              borderBottom: "1px solid #ccc"
-            }}
-          >
-            <span>{card.word}</span>
-            <button onClick={() => onEdit(index)}>Edit</button>
+          <li key={index} className="list-item">
+            <span className="list-word">{card.word}</span>
+            <button className="list-edit" onClick={() => onEdit(index)}>Edit</button>
           </li>
         ))}
       </ul>

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import "./AddScreen.scss";
 
 export default function AddScreen({ onAddCard, onDone }) {
   const [word, setWord] = useState("");
@@ -17,21 +18,22 @@ export default function AddScreen({ onAddCard, onDone }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ padding: "1rem" }}>
-      <div>
-        <label>Word:</label>
+    <form className="add-root" onSubmit={handleSubmit}>
+      <div className="add-row">
+        <label className="add-label">Word:</label>
         <input
+          className="add-input"
           type="text"
           value={word}
           onChange={(e) => setWord(e.target.value)}
           required
-          style={{ marginLeft: "0.5rem" }}
         />
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
-        <label>Images:</label>
+      <div className="add-row">
+        <label className="add-label">Images:</label>
         <input
+          className="add-file"
           type="file"
           multiple
           accept="image/*"
@@ -39,18 +41,28 @@ export default function AddScreen({ onAddCard, onDone }) {
         />
       </div>
 
-      <div style={{ marginTop: "1rem" }}>
-        <label>Audio:</label>
+      <div className="add-previews">
+        {images.map((file, idx) => (
+          <img
+            key={idx}
+            src={URL.createObjectURL(file)}
+            alt={`preview-${idx}`}
+            className="add-preview-image"
+          />
+        ))}
+      </div>
+
+      <div className="add-row">
+        <label className="add-label">Audio:</label>
         <input
+          className="add-file"
           type="file"
           accept="audio/*"
           onChange={(e) => setAudio(e.target.files[0])}
         />
       </div>
 
-      <button type="submit" style={{ marginTop: "1rem" }}>
-        Add Card
-      </button>
+      <button className="add-submit" type="submit">Add Card</button>
     </form>
   );
 }
