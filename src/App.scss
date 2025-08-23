@@ -14,7 +14,6 @@
   z-index: 2;
 }
 
-/* Larger, thumb-friendly hamburger button */
 .app-menu-button {
   margin-right: 1rem;
   cursor: pointer;
@@ -42,12 +41,20 @@
   margin: 0;
 }
 
+/* Backdrop for closing menu on outside click */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 9; /* below the menu, above content */
+}
+
 /* Sliding side menu */
 .app-menu {
   position: absolute;
   top: 0;
   left: 0;
-  width: 200px;
+  width: 220px;
   height: 100%;
   background: #555;
   color: #fff;
@@ -72,7 +79,7 @@
   margin: 0;
 }
 
-/* Bigger, more touch-friendly menu items */
+/* Bigger, touch-friendly menu items */
 .app-menu-item {
   display: block;
   margin: 0.75rem 0;
@@ -97,14 +104,12 @@
   background: #888;
 }
 
-/* Main area */
 .app-main {
   flex: 1;
   overflow-y: auto;
   position: relative;
 }
 
-/* Folder picker view */
 .app-picker {
   padding: 1rem;
 }

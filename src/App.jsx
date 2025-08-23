@@ -3,6 +3,7 @@ import ReviewScreen from "./screens/ReviewScreen.jsx";
 import AddScreen from "./screens/AddScreen.jsx";
 import EditScreen from "./screens/EditScreen.jsx";
 import ListScreen from "./screens/ListScreen.jsx";
+import OptionsScreen from "./screens/OptionsScreen.jsx";
 import { openDB } from "idb";
 import "./App.scss";
 
@@ -82,12 +83,48 @@ async function loadCardsFromDirectory() {
   return loadedCards;
 }
 
+// ===== Save pronunciation recording into the card's folder =====
+async function savePronunciation(folderName, blob, ext = "webm") {
+  if (!directoryHandle || !folderName || !blob) return;
+
+  const cardFolder = await directoryHandle.getDirectoryHandle(folderName, { create: true });
+  const practiceFolder = await cardFolder.getDirectoryHandle("practice", { create: true });
+
+  const stamp = new Date();
+  const yyyy = String(stamp.getFullYear());
+  const mm = String(stamp.getMonth() + 1).padStart(2, "0");
+  const dd = String(stamp.getDate()).padStart(2, "0");
+  const hh = String(stamp.getHours()).padStart(2, "0");
+  const min = String(stamp.getMinutes()).padStart(2, "0");
+  const ss = String(stamp.getSeconds()).padStart(2, "0");
+
+  const filename = `practice-${yyyy}${mm}${dd}-${hh}${min}${ss}.${ext}`;
+
+  const fileHandle = await practiceFolder.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+// -------------------- App Component --------------------
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [screen, setScreen] = useState("review");
   const [editingCardId, setEditingCardId] = useState(null);
   const [cards, setCards] = useState([]);
   const [folderReady, setFolderReady] = useState(false);
+
+  // Options
+  const [micEnabled, setMicEnabled] = useState(false); // default off to avoid recording too much
+  // Options (persisted in localStorage)
+  const [options, setOptions] = useState(() => {
+    const stored = localStorage.getItem("options");
+    return stored ? JSON.parse(stored) : { micEnabled: false };
+  });
+
+  useEffect(() => {
+    localStorage.setItem("options", JSON.stringify(options));
+  }, [options]);
 
   useEffect(() => {
     (async () => {
@@ -235,7 +272,13 @@ function App() {
 
   let content;
   if (screen === "review") {
-    content = <ReviewScreen cards={cards} />;
+    content = (
+      <ReviewScreen
+        cards={cards}
+        micEnabled={options.micEnabled}
+        onSaveRecording={savePronunciation}
+      />
+    );
   } else if (screen === "add") {
     content = <AddScreen onAddCard={handleAddCard} onDone={() => navigate("cards")} />;
   } else if (screen === "edit") {
@@ -252,6 +295,13 @@ function App() {
     );
   } else if (screen === "cards") {
     content = <ListScreen cards={cards} onEdit={(id) => navigate("edit", id)} />;
+  } else if (screen === "options") {
+    content = (
+      <OptionsScreen
+        micEnabled={options.micEnabled}
+        onChangeMic={(v) => setOptions((prev) => ({ ...prev, micEnabled: v }))}
+      />
+    );
   }
 
   return (
@@ -266,31 +316,18 @@ function App() {
         <h1 className="app-title">Flashcards</h1>
       </header>
 
-      {/* Sidebar Menu (slides in/out) */}
-      {menuOpen && (
-        <nav
-          className={`app-menu ${menuOpen ? "open" : ""}`}
-          aria-hidden={!menuOpen}
-        >
-          <ul className="app-menu-list">
-            <li>
-              <button className="app-menu-item" onClick={() => navigate("review")}>
-                Review
-              </button>
-            </li>
-            <li>
-              <button className="app-menu-item" onClick={() => navigate("cards")}>
-                Card List
-              </button>
-            </li>
-            <li>
-              <button className="app-menu-item" onClick={() => navigate("add")}>
-                Add Card
-              </button>
-            </li>
-          </ul>
-        </nav>
-      )}
+      {/* Backdrop to close menu on outside click */}
+      {menuOpen && <div className="app-backdrop" onClick={() => setMenuOpen(false)} />}
+
+      {/* Sliding Menu */}
+      <nav className={`app-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
+        <ul className="app-menu-list">
+          <li><button className="app-menu-item" onClick={() => navigate("review")}>Review</button></li>
+          <li><button className="app-menu-item" onClick={() => navigate("cards")}>Card List</button></li>
+          <li><button className="app-menu-item" onClick={() => navigate("add")}>Add Card</button></li>
+          <li><button className="app-menu-item" onClick={() => navigate("options")}>Options</button></li>
+        </ul>
+      </nav>
 
       <main className="app-main">{content}</main>
     </div>
