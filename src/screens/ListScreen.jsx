@@ -1,5 +1,5 @@
 import React from "react";
-import "./ListScreen.scss";
+import "../styles/ListScreen.scss";
 
 export default function ListScreen({ cards, onEdit }) {
   return (

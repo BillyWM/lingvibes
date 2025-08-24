@@ -1,5 +1,5 @@
 import React from "react";
-import "./OptionsScreen.scss";
+import "../styles/OptionsScreen.scss";
 
 export default function OptionsScreen({ micEnabled, onChangeMic }) {
   return (

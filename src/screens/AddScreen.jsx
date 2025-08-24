@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import "./AddScreen.scss";
+import "../styles/AddScreen.scss";
 
 export default function AddScreen({ onAddCard, onDone }) {
   const [word, setWord] = useState("");

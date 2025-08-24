@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import "./EditScreen.scss";
+import "../styles/EditScreen.scss";
 
 export default function EditScreen({ card, onSave, onCancel }) {
   const [word, setWord] = useState("");

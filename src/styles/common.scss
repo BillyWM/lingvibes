@@ -1,8 +1,6 @@
-.review-empty {
-  padding: 1rem;
-}
+/* Shared layout and card presentation */
 
-.review-root {
+.flash-root {
   position: relative;
   flex: 1;
   height: 100%;
@@ -12,7 +10,7 @@
   justify-content: center;
 }
 
-.review-zone {
+.flash-zone {
   position: absolute;
   top: 0;
   height: 100%;
@@ -23,40 +21,39 @@
   pointer-events: auto;
 }
 
-.review-zone-left {
-  left: 0;
-}
+.flash-zone-left { left: 0; }
+.flash-zone-right { right: 0; }
 
-.review-zone-right {
-  right: 0;
-}
-
-.review-card {
+.flash-card {
   width: 60%;
   max-width: 500px;
   margin: 0 auto;
   text-align: center;
   padding: 1rem;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
   border-radius: 8px;
   background: #fff;
   user-select: none;
 }
 
-.review-title {
+.flash-title {
   font-size: 1.5rem;
   margin-bottom: 1rem;
 }
 
-.review-images {
+.flash-images {
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.review-image {
-  max-width: 100px;
-  max-height: 100px;
+.flash-image {
+  max-width: 120px;
+  max-height: 120px;
   border-radius: 4px;
+}
+
+.flash-empty {
+  padding: 1rem;
 }
