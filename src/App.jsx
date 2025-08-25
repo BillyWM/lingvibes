@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import ReviewScreen from "./screens/ReviewScreen.jsx";
-import AddScreen from "./screens/AddScreen.jsx";
-import EditScreen from "./screens/EditScreen.jsx";
-import ListScreen from "./screens/ListScreen.jsx";
+import CardsScreen from "./screens/CardsScreen.jsx";
 import OptionsScreen from "./screens/OptionsScreen.jsx";
+import StudyScreen from "./screens/StudyScreen.jsx";
 import { openDB } from "idb";
 import "./App.scss";
 
@@ -294,7 +293,13 @@ function App() {
       />
     );
   } else if (screen === "cards") {
-    content = <ListScreen cards={cards} onEdit={(id) => navigate("edit", id)} />;
+    content = (
+      <CardsScreen
+        cards={cards}
+        onAddCard={handleAddCard}
+        onSaveCard={handleSaveCard}
+      />
+    );
   } else if (screen === "options") {
     content = (
       <OptionsScreen
@@ -302,7 +307,16 @@ function App() {
         onChangeMic={(v) => setOptions((prev) => ({ ...prev, micEnabled: v }))}
       />
     );
+  } else if (screen === "study") {
+    content = (
+      <StudyScreen
+        cards={cards}
+        micEnabled={options.micEnabled}
+        onSaveRecording={savePronunciation}
+      />
+    );
   }
+
 
   return (
     <div className="app-root">
@@ -323,8 +337,8 @@ function App() {
       <nav className={`app-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <ul className="app-menu-list">
           <li><button className="app-menu-item" onClick={() => navigate("review")}>Review</button></li>
-          <li><button className="app-menu-item" onClick={() => navigate("cards")}>Card List</button></li>
-          <li><button className="app-menu-item" onClick={() => navigate("add")}>Add Card</button></li>
+          <li><button className="app-menu-item" onClick={() => navigate("study")}>Study</button></li>
+          <li><button className="app-menu-item" onClick={() => navigate("cards")}>Cards</button></li>
           <li><button className="app-menu-item" onClick={() => navigate("options")}>Options</button></li>
         </ul>
       </nav>
