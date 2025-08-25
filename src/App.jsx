@@ -26,25 +26,19 @@ async function saveDirectoryHandle(handle) {
 
 async function getSavedDirectoryHandle() {
   const db = await getDB();
-  const handle = await db.get("handles", "directory");
-  if (handle) {
-    const perm = await handle.queryPermission({ mode: "readwrite" });
-    if (perm === "granted") return handle;
-    const request = await handle.requestPermission({ mode: "readwrite" });
-    if (request === "granted") return handle;
-  }
-  return null;
+  return await db.get("handles", "directory"); // just return; permission is checked at startup
 }
 
 // ----- Folder picker -----
 async function pickDirectory() {
-  if (!window.showDirectoryPicker) {
-    alert("Your browser does not support the File System Access API.");
-    return null;
+  // must be called from a user gesture
+  const handle = await window.showDirectoryPicker();
+  await saveDirectoryHandle(handle);
+  if (navigator.storage && navigator.storage.persist) {
+    try { await navigator.storage.persist(); } catch {}
   }
-  directoryHandle = await window.showDirectoryPicker();
-  await saveDirectoryHandle(directoryHandle);
-  return directoryHandle;
+  directoryHandle = handle;
+  return handle;
 }
 
 // ----- Load cards -----
@@ -112,9 +106,9 @@ function App() {
   const [editingCardId, setEditingCardId] = useState(null);
   const [cards, setCards] = useState([]);
   const [folderReady, setFolderReady] = useState(false);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [restorableHandle, setRestorableHandle] = useState(null);
 
-  // Options
-  const [micEnabled, setMicEnabled] = useState(false); // default off to avoid recording too much
   // Options (persisted in localStorage)
   const [options, setOptions] = useState(() => {
     const stored = localStorage.getItem("options");
@@ -125,14 +119,23 @@ function App() {
     localStorage.setItem("options", JSON.stringify(options));
   }, [options]);
 
+  // Restore saved handle on startup and check permission
   useEffect(() => {
     (async () => {
-      directoryHandle = await getSavedDirectoryHandle();
-      if (directoryHandle) {
+      const saved = await getSavedDirectoryHandle();
+      if (!saved) return;
+
+      const perm = await saved.queryPermission({ mode: "readwrite" });
+      if (perm === "granted") {
+        directoryHandle = saved;
         const loaded = await loadCardsFromDirectory();
         setCards(loaded);
         setFolderReady(true);
+      } else if (perm === "prompt") {
+        setNeedsReconnect(true);
+        setRestorableHandle(saved);
       }
+      // if denied, user will need to Select Folder again
     })();
   }, []);
 
@@ -252,19 +255,41 @@ function App() {
         <main className="app-main">
           <div className="app-picker">
             <p>No folder selected. Please choose a folder to store your flashcards:</p>
-            <button
-              className="app-action"
-              onClick={async () => {
-                const handle = await pickDirectory();
-                if (handle) {
-                  const loaded = await loadCardsFromDirectory();
-                  setCards(loaded);
-                  setFolderReady(true);
-                }
-              }}
-            >
-              Select Folder
-            </button>
+
+            {!needsReconnect && (
+              <button
+                className="app-action"
+                onClick={async () => {
+                  const handle = await pickDirectory();
+                  if (handle) {
+                    const loaded = await loadCardsFromDirectory();
+                    setCards(loaded);
+                    setFolderReady(true);
+                  }
+                }}
+              >
+                Select Folder
+              </button>
+            )}
+
+            {needsReconnect && (
+              <button
+                className="app-action"
+                onClick={async () => {
+                  if (!restorableHandle) return;
+                  const status = await restorableHandle.requestPermission({ mode: "readwrite" });
+                  if (status === "granted") {
+                    directoryHandle = restorableHandle;
+                    const loaded = await loadCardsFromDirectory();
+                    setCards(loaded);
+                    setFolderReady(true);
+                    setNeedsReconnect(false);
+                  }
+                }}
+              >
+                Reconnect storage
+              </button>
+            )}
           </div>
         </main>
       </div>
@@ -318,7 +343,6 @@ function App() {
       />
     );
   }
-
 
   return (
     <div className="app-root">
