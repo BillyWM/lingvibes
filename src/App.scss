@@ -1,5 +1,5 @@
 .app-root {
-  height: 100vh;
+  min-height: 100vh;     /* allow full height but not forced */
   display: flex;
   flex-direction: column;
 }
@@ -104,9 +104,10 @@
   background: #888;
 }
 
+
 .app-main {
   flex: 1;
-  overflow-y: auto;
+  overflow: visible;      /* let the document scroll, not an inner pane */
   position: relative;
 }
 

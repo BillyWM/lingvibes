@@ -172,6 +172,7 @@ function App() {
       word: newCard.word,
       images: imagePaths,
       audio: audioPath,
+      tags: Array.isArray(newCard.tags) ? newCard.tags : [],
       folderName: cardFolder.name,
     };
 
@@ -216,6 +217,7 @@ function App() {
       word: updatedCard.word,
       images: imagePaths,
       audio: audioPath,
+      tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
       folderName: updatedCard.folderName,
     };
 

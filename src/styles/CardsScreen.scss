@@ -142,6 +142,73 @@
 
 .cards-word {
   font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cards-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.cards-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  background: #eef;
+  color: #224;
+  border: 1px solid #ccd;
+}
+
+.cards-tag.more {
+  background: #eee;
+  color: #333;
+  border-color: #ddd;
+}
+
+/* Tag editor in edit mode */
+.cards-tags-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cards-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.cards-tag.editable {
+  background: #e6f7ff;
+  border-color: #bcd;
+}
+
+.cards-tag-del {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: #336;
+  padding: 0 0.15rem;
+}
+
+.cards-tag-del:hover,
+.cards-tag-del:focus {
+  color: #113;
+}
+
+.cards-tags-addrow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .cards-pagination {
