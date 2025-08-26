@@ -1,21 +1,20 @@
-/* Shared layout and card presentation */
-
 .flash-root {
   position: relative;
   flex: 1;
-  height: 100%;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 1rem;
+  overflow: hidden;
 }
 
+/* Click/tap zones: narrower + below card */
 .flash-zone {
   position: absolute;
-  top: 0;
-  height: 100%;
-  width: 20%;
-  z-index: 1;
+  top: 15%;
+  height: 70%;
+  width: 12%;          /* narrower so they don’t overlap the card */
+  z-index: 1;          /* card will sit above */
   cursor: pointer;
   background: transparent;
   pointer-events: auto;
@@ -24,36 +23,46 @@
 .flash-zone-left { left: 0; }
 .flash-zone-right { right: 0; }
 
+/* Card: same size as before, just ensure above zones */
 .flash-card {
-  width: 60%;
-  max-width: 500px;
+  width: clamp(300px, 80vw, 760px);
+  min-height: clamp(280px, 68vh, 780px);
   margin: 0 auto;
+  padding: 1.25rem 1.5rem;
+  background: #ffffff;
+  border: 1px solid #d7dbe0;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
   text-align: center;
-  padding: 1rem;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  border-radius: 8px;
-  background: #fff;
   user-select: none;
+  z-index: 2;    /* keep card above the side zones */
 }
 
 .flash-title {
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
+  font-size: clamp(1.4rem, 1.2rem + 1.2vw, 2.2rem);
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: #111827;
 }
 
 .flash-images {
   display: flex;
+  flex: 1 1 auto;
+  align-items: center;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  min-height: 40vh;
 }
 
 .flash-image {
-  max-width: 120px;
-  max-height: 120px;
-  border-radius: 4px;
+  max-width: min(40%, 240px);
+  max-height: 40vh;
+  border-radius: 8px;
+  object-fit: contain;
 }
 
 .flash-empty {
   padding: 1rem;
+  font-size: 1.1rem;
 }

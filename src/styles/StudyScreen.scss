@@ -1,5 +1,5 @@
 .study-actions {
-  margin-top: 0.75rem;
+  margin-top: 0.9rem;
   display: flex;
   justify-content: center;
 }
@@ -7,13 +7,18 @@
 .study-play {
   padding: 0.75rem 1.25rem;
   font-size: 1.1rem;
-  border: none;
-  border-radius: 6px;
-  background: #666;
-  color: #fff;
+  border: 1px solid #d7dbe0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #111827;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
 }
 
 .study-play:hover,
-.study-play:focus { background: #777; }
-.study-play:active { background: #888; }
+.study-play:focus { background: #f7f7f9; }
+
+.study-play:active {
+  background: #f0f2f5;
+  transform: translateY(1px);
+}

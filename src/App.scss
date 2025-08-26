@@ -1,5 +1,6 @@
+
 .app-root {
-  min-height: 100vh;     /* allow full height but not forced */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -104,11 +105,11 @@
   background: #888;
 }
 
-
 .app-main {
   flex: 1;
-  overflow: visible;      /* let the document scroll, not an inner pane */
+  display: flex; /* let child screens (flash-root) fill height */
   position: relative;
+  overflow: visible;
 }
 
 .app-picker {
