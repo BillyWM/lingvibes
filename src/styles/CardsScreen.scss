@@ -1,12 +1,26 @@
+/* Make the Cards screen stretch inside .app-main (which is display:flex) */
 .cards-root {
-  padding: 1rem;
-  font-size: 1.1rem;
+  flex: 1 1 auto;          /* fill available space */
+  width: 100%;             /* take full row width */
+  max-width: 1100px;       /* optional container max width */
+  margin: 0 auto;          /* center within the row */
+  padding: 0 1rem;         /* gutter */
+  display: flex;
+  flex-direction: column;
 }
 
 .cards-title {
   margin: 0.75rem 0;
   font-size: 1.5rem;
   font-weight: 600;
+}
+
+/* Ensure the major blocks expand across the container */
+.cards-add-form,
+.cards-edit-form,
+.cards-toolbar,
+.cards-list {
+  width: 100%;
 }
 
 .cards-add-form,
