@@ -30,8 +30,8 @@ function uniqueMerge(prevTags, newOnes) {
 export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
   // ---- Add form state ----
   const [newWord, setNewWord] = useState("");
-  const [newImages, setNewImages] = useState([]);
-  const [newAudio, setNewAudio] = useState(null);
+  const [newImages, setNewImages] = useState([]); // File[]
+  const [newAudio, setNewAudio] = useState(null); // File|null
   const [newTagsText, setNewTagsText] = useState("");
 
   // ---- Search + Pagination ----
@@ -41,10 +41,14 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
   // ---- Edit state ----
   const [editingId, setEditingId] = useState(null);
   const [editWord, setEditWord] = useState("");
-  const [editImages, setEditImages] = useState([]);
+  const [editImages, setEditImages] = useState([]); // new File[] to append
   const [editAudio, setEditAudio] = useState(null);
-  const [editTags, setEditTags] = useState([]);      // array of strings
-  const [editTagInput, setEditTagInput] = useState(""); // single tag add box
+  const [editTags, setEditTags] = useState([]); // array of strings
+  const [editTagInput, setEditTagInput] = useState("");
+
+  // Existing images for the card being edited:
+  // [{ name: <filename from FS>, url: <objectURL> }, ...]
+  const [editExistingImgs, setEditExistingImgs] = useState([]);
 
   // Previews
   const newImagePreviews = useMemo(
@@ -83,7 +87,10 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
   // ---- Add handlers ----
   function handleNewImagesChange(e) {
     const files = e.target.files ? Array.from(e.target.files) : [];
-    setNewImages(files);
+    // Append instead of replace
+    setNewImages((prev) => [...prev, ...files]);
+    // Let the same file be picked again later if needed
+    e.target.value = "";
   }
 
   function handleNewAudioChange(e) {
@@ -106,92 +113,103 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
     e.target.reset();
   }
 
-	// ---- Edit handlers ----
-	function beginEdit(card) {
-		setEditingId(card.folderName);
-		setEditWord(card.word || "");
-		setEditImages([]);
-		setEditAudio(null);
-		setEditTags(Array.isArray(card.tags) ? [...card.tags] : []);
-		setEditTagInput("");
-	}
+  // ---- Edit handlers ----
+  function beginEdit(card) {
+    setEditingId(card.folderName);
+    setEditWord(card.word || "");
+    setEditImages([]);
+    setEditAudio(null);
+    setEditTags(Array.isArray(card.tags) ? [...card.tags] : []);
+    setEditTagInput("");
 
-	function cancelEdit() {
-		setEditingId(null);
-		setEditWord("");
-		setEditImages([]);
-		setEditAudio(null);
-		setEditTags([]);
-		setEditTagInput("");
-	}
+    // Pair filenames with URLs so we can show and delete by filename.
+    const names = Array.isArray(card.imageNames) ? card.imageNames : [];
+    const urls = Array.isArray(card.images) ? card.images : [];
+    const paired = names.map((name, i) => ({ name, url: urls[i] || null }));
+    setEditExistingImgs(paired);
+  }
 
-	function handleEditImagesChange(e) {
-		const files = e.target.files ? Array.from(e.target.files) : [];
-		setEditImages(files);
-	}
+  function cancelEdit() {
+    setEditingId(null);
+    setEditWord("");
+    setEditImages([]);
+    setEditAudio(null);
+    setEditTags([]);
+    setEditTagInput("");
+    setEditExistingImgs([]);
+  }
 
-	function handleEditAudioChange(e) {
-		const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-		setEditAudio(f);
-	}
+  function handleEditImagesChange(e) {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    // Append new selections
+    setEditImages((prev) => [...prev, ...files]);
+    e.target.value = "";
+  }
 
-	// NEW: add multiple tags at once and dedupe
-	function addEditTagsFromText(text) {
-		const tags = parseInlineTags(text);
-		if (tags.length === 0) return;
-		setEditTags((prev) => uniqueMerge(prev, tags));
-	}
+  function handleEditAudioChange(e) {
+    const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+    setEditAudio(f);
+  }
 
-	// Keep the "+" button behavior, but allow comma-separated here too
-	function addEditTag() {
-		if (!editTagInput.trim()) return;
-		addEditTagsFromText(editTagInput);
-		setEditTagInput("");
-	}
+  // Tags (edit)
+  function addEditTagsFromText(text) {
+    const tags = parseInlineTags(text);
+    if (tags.length === 0) return;
+    setEditTags((prev) => uniqueMerge(prev, tags));
+  }
 
-	function removeEditTag(tag) {
-		setEditTags((prev) => prev.filter((t) => t !== tag));
-	}
+  function addEditTag() {
+    if (!editTagInput.trim()) return;
+    addEditTagsFromText(editTagInput);
+    setEditTagInput("");
+  }
 
-	// NEW: onChange that consumes any complete segments before the last comma
-	function handleEditTagInputChange(e) {
-		const val = e.target.value;
-		if (val.includes(",")) {
-			const parts = val.split(",");
-			const remainder = parts.pop(); // keep the last segment in the input
-			const complete = parts.join(",");
-			addEditTagsFromText(complete);
-			setEditTagInput(remainder);
-		} else {
-			setEditTagInput(val);
-		}
-	}
+  function removeEditTag(tag) {
+    setEditTags((prev) => prev.filter((t) => t !== tag));
+  }
 
-	// NEW: Enter should add the current input as tags
-	function handleEditTagKeyDown(e) {
-		if (e.key === "Enter") {
-			e.preventDefault();
-			if (editTagInput.trim()) {
-			addEditTagsFromText(editTagInput);
-			setEditTagInput("");
-			}
-		}
-	}
+  function handleEditTagInputChange(e) {
+    const val = e.target.value;
+    if (val.includes(",")) {
+      const parts = val.split(",");
+      const remainder = parts.pop();
+      const complete = parts.join(",");
+      addEditTagsFromText(complete);
+      setEditTagInput(remainder);
+    } else {
+      setEditTagInput(val);
+    }
+  }
 
-	async function submitEdit(e, original) {
-		e.preventDefault();
-		if (!original) return;
+  function handleEditTagKeyDown(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (editTagInput.trim()) {
+        addEditTagsFromText(editTagInput);
+        setEditTagInput("");
+      }
+    }
+  }
 
-		const updated = {
-			word: editWord.trim() || original.word,
-			folderName: original.folderName,
-			tags: editTags
-		};
-		const files = { images: editImages, audio: editAudio };
-		await onSaveCard(updated, files);
+  function removeExistingImage(name) {
+    setEditExistingImgs((prev) => prev.filter((it) => it.name !== name));
+  }
 
-		cancelEdit();
-	}
+  async function submitEdit(e, original) {
+    e.preventDefault();
+    if (!original) return;
+
+    const imagesKeep = editExistingImgs.map((it) => it.name); // filenames to keep
+    const updated = {
+      word: editWord.trim() || original.word,
+      folderName: original.folderName,
+      tags: editTags,
+      imagesKeep
+    };
+    const files = { images: editImages, audio: editAudio };
+    await onSaveCard(updated, files);
+    cancelEdit();
+  }
 
   // ---- Pagination UI ----
   function Pagination() {
@@ -362,30 +380,52 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
                           </span>
                         ))}
                       </div>
-					<div className="cards-tags-addrow">
-						<input
-							className="cards-input"
-							type="text"
-							value={editTagInput}
-							onChange={handleEditTagInputChange}
-							onKeyDown={handleEditTagKeyDown}
-							placeholder="Type tags, use commas or Enter"
-						/>
-						<button
-							className="cards-edit"
-							type="button"
-							onClick={addEditTag}
-							title="Add tag(s)"
-							aria-label="Add tag(s)"
-						>
-						+
-						</button>
-					</div>
-                </div>
-                </div>
+                      <div className="cards-tags-addrow">
+                        <input
+                          className="cards-input"
+                          type="text"
+                          value={editTagInput}
+                          onChange={handleEditTagInputChange}
+                          onKeyDown={handleEditTagKeyDown}
+                          placeholder="Type tags, use commas or Enter"
+                        />
+                        <button
+                          className="cards-edit"
+                          type="button"
+                          onClick={addEditTag}
+                          title="Add tag(s)"
+                          aria-label="Add tag(s)"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
+                  {/* Existing images with delete (×) */}
                   <div className="cards-row">
-                    <label className="cards-label" htmlFor={`edit-images-${card.folderName}`}>Images</label>
+                    <label className="cards-label">Images</label>
+                    <div className="cards-existing-images">
+                      {editExistingImgs.map((it) => (
+                        <div key={it.name} className="image-thumb">
+                          {it.url ? <img src={it.url} alt="" /> : <div className="image-fallback">{it.name}</div>}
+                          <button
+                            type="button"
+                            className="image-del"
+                            onClick={() => removeExistingImage(it.name)}
+                            title="Delete image"
+                            aria-label={`Delete ${it.name}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Add more images incrementally */}
+                  <div className="cards-row">
+                    <label className="cards-label" htmlFor={`edit-images-${card.folderName}`}>Add Images</label>
                     <input
                       id={`edit-images-${card.folderName}`}
                       className="cards-file"

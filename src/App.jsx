@@ -26,7 +26,7 @@ async function saveDirectoryHandle(handle) {
 
 async function getSavedDirectoryHandle() {
   const db = await getDB();
-  return await db.get("handles", "directory"); // just return; permission is checked at startup
+  return await db.get("handles", "directory");
 }
 
 // ----- Folder picker -----
@@ -41,7 +41,7 @@ async function pickDirectory() {
   return handle;
 }
 
-// ----- Load cards -----
+// ----- Load cards (now preserves filenames and builds URLs) -----
 async function loadCardsFromDirectory() {
   if (!directoryHandle) return [];
 
@@ -54,19 +54,28 @@ async function loadCardsFromDirectory() {
         const text = await (await cardFile.getFile()).text();
         const cardData = JSON.parse(text);
 
-        cardData.images = await Promise.all(
-          cardData.images.map(async (name) => {
+        const imageNames = Array.isArray(cardData.images) ? [...cardData.images] : [];
+        const imageUrls = await Promise.all(
+          imageNames.map(async (name) => {
             const f = await cardFolder.getFileHandle(name);
             return URL.createObjectURL(await f.getFile());
           })
         );
+
+        let audioUrl = null;
         if (cardData.audio) {
           const f = await cardFolder.getFileHandle(cardData.audio);
-          cardData.audio = URL.createObjectURL(await f.getFile());
+          audioUrl = URL.createObjectURL(await f.getFile());
         }
 
-        cardData.folderName = cardFolder.name;
-        loadedCards.push(cardData);
+        loadedCards.push({
+          word: cardData.word,
+          images: imageUrls,
+          imageNames,
+          audio: audioUrl,
+          tags: Array.isArray(cardData.tags) ? cardData.tags : [],
+          folderName: cardFolder.name,
+        });
       } catch (e) {
         console.warn("Skipping folder", cardFolder.name, e);
       }
@@ -145,6 +154,7 @@ function App() {
     setScreen(target);
   };
 
+  // ----- Add card (writes files, saves JSON, then builds URLs + filenames for state) -----
   const handleAddCard = async (newCard, files) => {
     if (!directoryHandle) return;
 
@@ -153,13 +163,13 @@ function App() {
       { create: true }
     );
 
-    const imagePaths = [];
+    const imageNames = [];
     for (const imgFile of files.images || []) {
       const imgHandle = await cardFolder.getFileHandle(imgFile.name, { create: true });
       const writable = await imgHandle.createWritable();
       await writable.write(await imgFile.arrayBuffer());
       await writable.close();
-      imagePaths.push(imgFile.name);
+      imageNames.push(imgFile.name);
     }
 
     let audioPath = null;
@@ -171,9 +181,9 @@ function App() {
       audioPath = files.audio.name;
     }
 
-    const cardData = {
+    const jsonData = {
       word: newCard.word,
-      images: imagePaths,
+      images: imageNames,
       audio: audioPath,
       tags: Array.isArray(newCard.tags) ? newCard.tags : [],
       folderName: cardFolder.name,
@@ -181,44 +191,91 @@ function App() {
 
     const cardFile = await cardFolder.getFileHandle("card.json", { create: true });
     const writable = await cardFile.createWritable();
-    await writable.write(JSON.stringify(cardData));
+    await writable.write(JSON.stringify(jsonData));
     await writable.close();
 
-    cardData.images = cardData.images.map(
-      (name) => URL.createObjectURL(files.images.find((f) => f.name === name))
+    const urls = await Promise.all(
+      imageNames.map(async (name) => {
+        const f = await cardFolder.getFileHandle(name);
+        return URL.createObjectURL(await f.getFile());
+      })
     );
-    if (cardData.audio) cardData.audio = URL.createObjectURL(files.audio);
 
-    setCards((prev) => [...prev, cardData]);
+    let audioUrl = null;
+    if (audioPath) {
+      const f = await cardFolder.getFileHandle(audioPath);
+      audioUrl = URL.createObjectURL(await f.getFile());
+    }
+
+    setCards((prev) => [
+      ...prev,
+      {
+        word: jsonData.word,
+        images: urls,
+        imageNames,
+        audio: audioUrl,
+        tags: jsonData.tags,
+        folderName: jsonData.folderName,
+      },
+    ]);
   };
 
+  // ----- Save card (merge kept + new images; delete removed; preserve filenames) -----
   const handleSaveCard = async (updatedCard, files) => {
     if (!directoryHandle) return;
     if (!updatedCard.folderName) return;
 
     const cardFolder = await directoryHandle.getDirectoryHandle(updatedCard.folderName, { create: true });
 
-    const imagePaths = [];
+    const existing = cards.find((c) => c.folderName === updatedCard.folderName) || {};
+    const oldNames = Array.isArray(existing.imageNames) ? existing.imageNames : [];
+    const keepNames = Array.isArray(updatedCard.imagesKeep) ? updatedCard.imagesKeep : oldNames;
+
+    // Delete removed files
+    for (const name of oldNames) {
+      if (!keepNames.includes(name)) {
+        try {
+          await cardFolder.removeEntry(name);
+        } catch (e) {
+          console.warn("Could not remove", name, e);
+        }
+      }
+    }
+
+    // Add newly selected images
+    const newImageNames = [];
     for (const imgFile of files.images || []) {
       const imgHandle = await cardFolder.getFileHandle(imgFile.name, { create: true });
       const writable = await imgHandle.createWritable();
       await writable.write(await imgFile.arrayBuffer());
       await writable.close();
-      imagePaths.push(imgFile.name);
+      newImageNames.push(imgFile.name);
     }
 
-    let audioPath = updatedCard.audio ? updatedCard.audio.name : null;
+    // Audio (replace only if a new one provided; else keep what's in JSON)
+    let audioPath = null;
     if (files.audio) {
       const audioHandle = await cardFolder.getFileHandle(files.audio.name, { create: true });
       const writable = await audioHandle.createWritable();
       await writable.write(await files.audio.arrayBuffer());
       await writable.close();
       audioPath = files.audio.name;
+    } else {
+      try {
+        const cardFileOld = await cardFolder.getFileHandle("card.json");
+        const textOld = await (await cardFileOld.getFile()).text();
+        const parsedOld = JSON.parse(textOld);
+        if (parsedOld && parsedOld.audio) audioPath = parsedOld.audio;
+      } catch {
+        // ignore
+      }
     }
 
-    const cardData = {
+    const finalImageNames = [...keepNames, ...newImageNames];
+
+    const jsonData = {
       word: updatedCard.word,
-      images: imagePaths,
+      images: finalImageNames,
       audio: audioPath,
       tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
       folderName: updatedCard.folderName,
@@ -226,16 +283,34 @@ function App() {
 
     const cardFile = await cardFolder.getFileHandle("card.json", { create: true });
     const writable = await cardFile.createWritable();
-    await writable.write(JSON.stringify(cardData));
+    await writable.write(JSON.stringify(jsonData));
     await writable.close();
 
-    cardData.images = cardData.images.map(
-      (name) => URL.createObjectURL(files.images.find((f) => f.name === name))
+    // Rebuild URLs from disk for state
+    const urls = await Promise.all(
+      finalImageNames.map(async (name) => {
+        const f = await cardFolder.getFileHandle(name);
+        return URL.createObjectURL(await f.getFile());
+      })
     );
-    if (files.audio) cardData.audio = URL.createObjectURL(files.audio);
+
+    let audioUrl = null;
+    if (jsonData.audio) {
+      const f = await cardFolder.getFileHandle(jsonData.audio);
+      audioUrl = URL.createObjectURL(await f.getFile());
+    }
+
+    const cardState = {
+      word: jsonData.word,
+      images: urls,
+      imageNames: finalImageNames,
+      audio: audioUrl,
+      tags: jsonData.tags,
+      folderName: jsonData.folderName,
+    };
 
     setCards((prev) =>
-      prev.map((c) => (c.folderName === updatedCard.folderName ? cardData : c))
+      prev.map((c) => (c.folderName === updatedCard.folderName ? cardState : c))
     );
   };
 
@@ -249,7 +324,7 @@ function App() {
           >
             ☰
           </button>
-          <h1 className="app-title">Flashcards</h1>
+            <h1 className="app-title">Flashcards</h1>
         </header>
 
         <main className="app-main">
@@ -306,19 +381,11 @@ function App() {
       />
     );
   } else if (screen === "add") {
-    content = <AddScreen onAddCard={handleAddCard} onDone={() => navigate("cards")} />;
+    // (Kept for compatibility; CardsScreen handles add/edit now)
+    content = null;
   } else if (screen === "edit") {
-    const cardToEdit = cards[editingCardId] || null;
-    content = (
-      <EditScreen
-        card={cardToEdit}
-        onSave={async (updatedCard, files) => {
-          await handleSaveCard(updatedCard, files);
-          navigate("cards");
-        }}
-        onCancel={() => navigate("cards")}
-      />
-    );
+    // (Kept for compatibility)
+    content = null;
   } else if (screen === "cards") {
     content = (
       <CardsScreen
