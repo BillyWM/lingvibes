@@ -1,107 +1,186 @@
-// imports unchanged
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import SwipeContainer from "../components/SwipeContainer.jsx";
 import CardView from "../components/CardView.jsx";
-import { useRecorder } from "../hooks/useRecorder.js";
-import { waitMs, playOnce } from "../utils/audioUtils.js";
 import "../styles/ReviewScreen.scss";
 
-function ReviewScreen({ cards, micEnabled, onSaveRecording, delaySeconds, repeats }) {
+export default function ReviewScreen({ cards = [], micEnabled = false, onSaveRecording }) {
   const [index, setIndex] = useState(0);
   const audioRef = useRef(null);
-  const seqTokenRef = useRef(0);
 
-  // ✅ fallback defaults to handle older localStorage entries
-  const delay = Number.isFinite(Number(delaySeconds)) ? Number(delaySeconds) : 8;
-  const reps = Number.isFinite(Number(repeats)) ? Number(repeats) : 2;
-
-  const card = cards[index] || null;
-
-  const { startRecording, stopAndSaveIfAny } = useRecorder({
-    micEnabled,
-    onSave: onSaveRecording,
-    getFolderName: () => card?.folderName || null
-  });
-
-  useEffect(() => {
-    if (card && card.audio && audioRef.current) {
-      audioRef.current.src = card.audio;
-      audioRef.current.play().catch(() => {});
+  // Read delay/repeats from Options saved in localStorage; fall back to 8s & 2
+  const { delaySeconds, repeats } = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("options");
+      const opt = raw ? JSON.parse(raw) : {};
+      return {
+        delaySeconds: Number.isFinite(opt.delaySeconds) ? opt.delaySeconds : 8,
+        repeats: Number.isFinite(opt.repeats) ? opt.repeats : 2
+      };
+    } catch {
+      return { delaySeconds: 8, repeats: 2 };
     }
-  }, [card]);
+  }, []);
 
-  async function prevCard() {
-    await stopAndSaveIfAny();
-    setIndex((i) => Math.max(0, i - 1));
+  const hasCards = cards && cards.length > 0;
+  const card = useMemo(
+    () => (hasCards ? cards[Math.max(0, Math.min(index, cards.length - 1))] : null),
+    [cards, index, hasCards]
+  );
+
+  // Sequence token to cancel any in-flight sequence when card changes/unmounts
+  const seqToken = useRef(0);
+
+  function prevCard() {
+    if (!hasCards) return;
+    setIndex((i) => (i - 1 + cards.length) % cards.length);
   }
 
-  async function nextCard() {
-    await stopAndSaveIfAny();
-    setIndex((i) => Math.min(cards.length - 1, i + 1));
+  function nextCard() {
+    if (!hasCards) return;
+    setIndex((i) => (i + 1) % cards.length);
   }
 
-  useEffect(() => {
-    const myToken = ++seqTokenRef.current;
-
-    async function run() {
-      if (!card) return;
-
-      const cycles = Math.max(1, reps);
-
-      for (let i = 0; i < cycles; i++) {
-        if (seqTokenRef.current !== myToken) return;
-
-        if (card.audio && audioRef.current) {
-          await playOnce(audioRef.current, card.audio);
-        } else {
-          // no audio: just wait the same window
-          await waitMs(delay * 1000);
-        }
-
-        if (seqTokenRef.current !== myToken) return;
-        await waitMs(delay * 1000);
-
-        if (seqTokenRef.current !== myToken) return;
-        if (micEnabled) {
-          await stopAndSaveIfAny();
-          if (i < cycles - 1) await startRecording();
-        }
-      }
-
-      if (seqTokenRef.current === myToken) {
-        await nextCard();
-      }
+  async function playOnce() {
+    if (!audioRef.current || !card || !card.audio) return;
+    // Set src each time in case object URL changed
+    audioRef.current.src = card.audio;
+    audioRef.current.currentTime = 0;
+    try {
+      await audioRef.current.play();
+    } catch {
+      // Autoplay may be blocked until user interaction.
     }
+    // Wait for 'ended'
+    await new Promise((resolve) => {
+      const el = audioRef.current;
+      if (!el) return resolve();
+      const onEnded = () => {
+        el.removeEventListener("ended", onEnded);
+        resolve();
+      };
+      el.addEventListener("ended", onEnded, { once: true });
+    });
+  }
+
+  // --- Recording (Opus in webm) ---
+  const recStreamRef = useRef(null);
+  const recRef = useRef(null);
+  const recChunksRef = useRef([]);
+
+  async function startRecording() {
+    if (!micEnabled) return false;
+    try {
+      if (!recStreamRef.current) {
+        recStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const rec = new MediaRecorder(recStreamRef.current, { mimeType: mime });
+      recChunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recChunksRef.current.push(e.data);
+      };
+      recRef.current = rec;
+      rec.start();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function stopAndSaveRecording(reason = "auto") {
+    const rec = recRef.current;
+    if (!rec) return;
+    await new Promise((resolve) => {
+      rec.onstop = resolve;
+      if (rec.state !== "inactive") rec.stop();
+      else resolve();
+    });
+    recRef.current = null;
+
+    const chunks = recChunksRef.current || [];
+    recChunksRef.current = [];
+    if (!chunks.length) return;
+
+    const blob = new Blob(chunks, { type: chunks[0].type || "audio/webm" });
+    if (onSaveRecording && card && card.folderName) {
+      await onSaveRecording(card.folderName, blob, "webm");
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise((res) => setTimeout(res, ms));
+  }
+
+  // Card-tap repeats audio
+  function handleRepeat() {
+    void playOnce();
+  }
+
+  // Main sequence: play audio, then wait/speak (record), repeat N times, then advance
+  useEffect(() => {
+    if (!card) return;
+    const myToken = ++seqToken.current;
 
     (async () => {
-      if (micEnabled && card) await startRecording();
-      await run();
+      for (let r = 0; r < Math.max(1, repeats); r++) {
+        if (seqToken.current !== myToken) return;
+        await playOnce();
+
+        if (seqToken.current !== myToken) return;
+        const started = await startRecording();
+        await sleep(Math.max(0, delaySeconds) * 1000);
+        if (seqToken.current !== myToken) return;
+        if (started) await stopAndSaveRecording("silenceWindow");
+      }
+
+      if (seqToken.current !== myToken) return;
+      nextCard();
     })();
 
+    // Cleanup: cancel sequence and save any partial recording
     return () => {
-      // save partial on unmount / re-run
-      stopAndSaveIfAny().catch(() => {});
+      seqToken.current++;
+      void (async () => {
+        await stopAndSaveRecording("cleanup");
+      })();
     };
-  }, [index, card, delay, reps, micEnabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card, repeats, delaySeconds]); // rerun when the active card or options change
 
-  if (!card) return <div className="flash-empty">No cards to review</div>;
+  if (!hasCards) {
+    return (
+      <div className="flash-root">
+        <div className="flash-card">
+          <h2 className="flash-title">No cards yet</h2>
+          <div className="flash-empty">Add a card on the Cards screen to begin.</div>
+          <audio ref={audioRef} hidden />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <SwipeContainer onPrev={() => prevCard()} onNext={() => nextCard()}>
-      {(dragX, bindProps) => (
-        <CardView
-          ref={audioRef}
-          word={card.word}
-          images={card.images}
-          bindProps={bindProps}
-          style={{
-            transform: `translateX(${dragX}px)`,
-            transition: dragX === 0 ? "transform 0.2s ease" : "none"
-          }}
-        />
-      )}
-    </SwipeContainer>
+    <div className="flash-root">
+      <div className="flash-zone flash-zone-left" onClick={prevCard} />
+      <div className="flash-zone flash-zone-right" onClick={nextCard} />
+
+      <SwipeContainer onPrev={prevCard} onNext={nextCard}>
+        {(dragX, bindProps) => (
+          <CardView
+            ref={audioRef}
+            word={card.word}
+            images={card.images}
+            bindProps={bindProps}
+            style={{
+              transform: `translateX(${dragX}px)`,
+              transition: dragX === 0 ? "transform 0.2s ease" : "none"
+            }}
+            onRepeat={handleRepeat}
+          />
+        )}
+      </SwipeContainer>
+    </div>
   );
 }
-
-export default ReviewScreen;

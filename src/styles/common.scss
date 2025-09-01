@@ -1,3 +1,10 @@
+/* Ensure the card captures horizontal drag (safe on both screens) */
+.flash-card {
+  touch-action: pan-y;
+}
+
+
+
 .flash-root {
   position: relative;
   flex: 1;
@@ -60,7 +67,11 @@
   max-height: 40vh;
   border-radius: 8px;
   object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none; /* clicks/gestures go to the card container */
 }
+
 
 .flash-empty {
   padding: 1rem;
