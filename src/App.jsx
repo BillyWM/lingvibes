@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import ReviewScreen from "./screens/ReviewScreen.jsx";
 import CardsScreen from "./screens/CardsScreen.jsx";
 import OptionsScreen from "./screens/OptionsScreen.jsx";
@@ -8,7 +8,9 @@ import "./App.scss";
 
 let directoryHandle = null;
 
-// ----- IndexedDB helpers -----
+/* =========================
+   IDB: persist FS handle
+   ========================= */
 async function getDB() {
   return await openDB("flashcards", 2, {
     upgrade(db) {
@@ -29,106 +31,148 @@ async function getSavedDirectoryHandle() {
   return await db.get("handles", "directory");
 }
 
-// ----- Folder picker -----
-async function pickDirectory() {
-  // must be called from a user gesture
-  const handle = await window.showDirectoryPicker();
-  await saveDirectoryHandle(handle);
-  if (navigator.storage && navigator.storage.persist) {
-    try { await navigator.storage.persist(); } catch {}
-  }
-  directoryHandle = handle;
-  return handle;
+/* =========================
+   Small helpers
+   ========================= */
+function pad6(n) {
+  const s = String(Math.max(0, Number(n) | 0));
+  return s.padStart(6, "0");
 }
 
-// ----- Load cards (now preserves filenames and builds URLs) -----
-async function loadCardsFromDirectory() {
-  if (!directoryHandle) return [];
-
-  const loadedCards = [];
-  for await (const entry of directoryHandle.values()) {
-    if (entry.kind === "directory") {
-      const cardFolder = entry;
-      try {
-        const cardFile = await cardFolder.getFileHandle("card.json");
-        const text = await (await cardFile.getFile()).text();
-        const cardData = JSON.parse(text);
-
-        const imageNames = Array.isArray(cardData.images) ? [...cardData.images] : [];
-        const imageUrls = await Promise.all(
-          imageNames.map(async (name) => {
-            const f = await cardFolder.getFileHandle(name);
-            return URL.createObjectURL(await f.getFile());
-          })
-        );
-
-        let audioUrl = null;
-        if (cardData.audio) {
-          const f = await cardFolder.getFileHandle(cardData.audio);
-          audioUrl = URL.createObjectURL(await f.getFile());
-        }
-
-        loadedCards.push({
-          word: cardData.word,
-          images: imageUrls,
-          imageNames,
-          audio: audioUrl,
-          tags: Array.isArray(cardData.tags) ? cardData.tags : [],
-          folderName: cardFolder.name,
-        });
-      } catch (e) {
-        console.warn("Skipping folder", cardFolder.name, e);
-      }
-    }
-  }
-  loadedCards.sort((a, b) => a.folderName.localeCompare(b.folderName));
-  return loadedCards;
+function sanitizeName(name) {
+  const base = (name || "").split("/").pop().split("\\").pop();
+  const trimmed = base.trim().replace(/\s+/g, " ");
+  const safe = trimmed.replace(/[^\w.\- +]/g, "-");
+  return safe.slice(0, 80);
 }
 
-// ===== Save pronunciation recording into the card's folder =====
-async function savePronunciation(folderName, blob, ext = "webm") {
-  if (!directoryHandle || !folderName || !blob) return;
+async function getOrCreateDir(name) {
+  return await directoryHandle.getDirectoryHandle(name, { create: true });
+}
 
-  const cardFolder = await directoryHandle.getDirectoryHandle(folderName, { create: true });
-  const practiceFolder = await cardFolder.getDirectoryHandle("practice", { create: true });
+async function getDir(name) {
+  try {
+    return await directoryHandle.getDirectoryHandle(name, { create: false });
+  } catch {
+    return null;
+  }
+}
 
-  const stamp = new Date();
-  const yyyy = String(stamp.getFullYear());
-  const mm = String(stamp.getMonth() + 1).padStart(2, "0");
-  const dd = String(stamp.getDate()).padStart(2, "0");
-  const hh = String(stamp.getHours()).padStart(2, "0");
-  const min = String(stamp.getMinutes()).padStart(2, "0");
-  const ss = String(stamp.getSeconds()).padStart(2, "0");
-
-  const filename = `practice-${yyyy}${mm}${dd}-${hh}${min}${ss}.${ext}`;
-
-  const fileHandle = await practiceFolder.getFileHandle(filename, { create: true });
+async function writeFileToDir(dirName, targetFilename, srcFileOrBlob) {
+  const dir = await getOrCreateDir(dirName);
+  const fileHandle = await dir.getFileHandle(targetFilename, { create: true });
   const writable = await fileHandle.createWritable();
-  await writable.write(blob);
+  if ("arrayBuffer" in srcFileOrBlob) {
+    await writable.write(await srcFileOrBlob.arrayBuffer());
+  } else {
+    await writable.write(srcFileOrBlob);
+  }
+  await writable.close();
+  return fileHandle;
+}
+
+async function deleteFromDirIfExists(dirName, filename) {
+  try {
+    const dir = await getOrCreateDir(dirName);
+    await dir.removeEntry(filename);
+  } catch {
+    // ignore missing
+  }
+}
+
+async function blobUrlFromDirFile(dirName, filename) {
+  const dir = await getDir(dirName);
+  if (!dir) return null;
+  try {
+    const fh = await dir.getFileHandle(filename);
+    const f = await fh.getFile();
+    return URL.createObjectURL(f);
+  } catch {
+    return null;
+  }
+}
+
+/* =========================
+   cards.json (atomic)
+   ========================= */
+async function readIndex() {
+  try {
+    const fh = await directoryHandle.getFileHandle("cards.json", { create: false });
+    const file = await fh.getFile();
+    const text = await file.text();
+    const obj = JSON.parse(text);
+    // normalize minimal fields
+    if (!obj || typeof obj !== "object") throw new Error("bad index");
+    if (!Array.isArray(obj.cards)) obj.cards = [];
+    if (typeof obj.nextCardNo !== "number") obj.nextCardNo = 1;
+    if (typeof obj.nextMediaNo !== "number") obj.nextMediaNo = 1;
+    return obj;
+  } catch {
+    return { updatedAt: new Date().toISOString(), nextCardNo: 1, nextMediaNo: 1, cards: [] };
+  }
+}
+
+async function writeIndex(indexObj) {
+  indexObj.updatedAt = new Date().toISOString();
+  const json = JSON.stringify(indexObj, null, 2);
+  const fh = await directoryHandle.getFileHandle("cards.json", { create: true });
+  const writable = await fh.createWritable(); // atomic commit on close
+  await writable.write(json);
   await writable.close();
 }
 
-// -------------------- App Component --------------------
+/* =========================
+   Load cards into state
+   ========================= */
+async function loadCardsForState() {
+  const index = await readIndex();
+
+  const cardsState = [];
+  for (const c of index.cards) {
+    const imageUrls = [];
+    for (const fname of c.imageFiles || []) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
+    }
+    let audioUrl = null;
+    if (c.audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
+    }
+    cardsState.push({
+      id: c.id,
+      word: c.word,
+      images: imageUrls,          // blob URLs for UI
+      imageFiles: c.imageFiles || [], // filenames on disk
+      audio: audioUrl,            // blob URL
+      audioFile: c.audioFile || null, // filename on disk
+      tags: Array.isArray(c.tags) ? c.tags : [],
+      recordings: Array.isArray(c.recordings) ? c.recordings : [],
+    });
+  }
+  return { index, cardsState };
+}
+
+/* =========================
+   App
+   ========================= */
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [screen, setScreen] = useState("review");
-  const [editingCardId, setEditingCardId] = useState(null);
   const [cards, setCards] = useState([]);
   const [folderReady, setFolderReady] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [restorableHandle, setRestorableHandle] = useState(null);
 
-  // Options (persisted in localStorage)
+  // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
     const stored = localStorage.getItem("options");
     return stored ? JSON.parse(stored) : { micEnabled: false };
   });
-
   useEffect(() => {
     localStorage.setItem("options", JSON.stringify(options));
   }, [options]);
 
-  // Restore saved handle on startup and check permission
+  // Restore handle on startup
   useEffect(() => {
     (async () => {
       const saved = await getSavedDirectoryHandle();
@@ -137,183 +181,239 @@ function App() {
       const perm = await saved.queryPermission({ mode: "readwrite" });
       if (perm === "granted") {
         directoryHandle = saved;
-        const loaded = await loadCardsFromDirectory();
-        setCards(loaded);
+        const { cardsState } = await loadCardsForState();
+        setCards(cardsState);
         setFolderReady(true);
       } else if (perm === "prompt") {
         setNeedsReconnect(true);
         setRestorableHandle(saved);
       }
-      // if denied, user will need to Select Folder again
     })();
   }, []);
 
-  const navigate = (target, id = null) => {
+  const navigate = (target) => {
     setMenuOpen(false);
-    setEditingCardId(id);
     setScreen(target);
   };
 
-  // ----- Add card (writes files, saves JSON, then builds URLs + filenames for state) -----
+  /* -------------------------
+     Select Folder
+     ------------------------- */
+  async function pickDirectory() {
+    const handle = await window.showDirectoryPicker();
+    await saveDirectoryHandle(handle);
+    if (navigator.storage && navigator.storage.persist) {
+      try { await navigator.storage.persist(); } catch {}
+    }
+    directoryHandle = handle;
+    return handle;
+  }
+
+  /* -------------------------
+     Add Card (uses index)
+     ------------------------- */
   const handleAddCard = async (newCard, files) => {
     if (!directoryHandle) return;
 
-    const cardFolder = await directoryHandle.getDirectoryHandle(
-      `card-${cards.length}`,
-      { create: true }
-    );
+    const index = await readIndex();
+    const id = index.nextCardNo++;
+    const createdAt = new Date().toISOString();
 
-    const imageNames = [];
-    for (const imgFile of files.images || []) {
-      const imgHandle = await cardFolder.getFileHandle(imgFile.name, { create: true });
-      const writable = await imgHandle.createWritable();
-      await writable.write(await imgFile.arrayBuffer());
-      await writable.close();
-      imageNames.push(imgFile.name);
+    // Images
+    const imageFiles = [];
+    for (const img of files.images || []) {
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
+      await writeFileToDir("images", fname, img);
+      imageFiles.push(fname);
     }
 
-    let audioPath = null;
+    // Audio (single)
+    let audioFile = null;
     if (files.audio) {
-      const audioHandle = await cardFolder.getFileHandle(files.audio.name, { create: true });
-      const writable = await audioHandle.createWritable();
-      await writable.write(await files.audio.arrayBuffer());
-      await writable.close();
-      audioPath = files.audio.name;
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
+      await writeFileToDir("audio", fname, files.audio);
+      audioFile = fname;
     }
 
-    const jsonData = {
+    const cardEntry = {
+      id,
       word: newCard.word,
-      images: imageNames,
-      audio: audioPath,
+      imageFiles,
+      audioFile,
       tags: Array.isArray(newCard.tags) ? newCard.tags : [],
-      folderName: cardFolder.name,
+      recordings: [],
+      createdAt,
+      updatedAt: createdAt,
     };
 
-    const cardFile = await cardFolder.getFileHandle("card.json", { create: true });
-    const writable = await cardFile.createWritable();
-    await writable.write(JSON.stringify(jsonData));
-    await writable.close();
+    index.cards.push(cardEntry);
+    await writeIndex(index);
 
-    const urls = await Promise.all(
-      imageNames.map(async (name) => {
-        const f = await cardFolder.getFileHandle(name);
-        return URL.createObjectURL(await f.getFile());
-      })
-    );
-
+    // Build state object with blob URLs
+    const imageUrls = [];
+    for (const fname of imageFiles) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
+    }
     let audioUrl = null;
-    if (audioPath) {
-      const f = await cardFolder.getFileHandle(audioPath);
-      audioUrl = URL.createObjectURL(await f.getFile());
+    if (audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", audioFile);
     }
 
     setCards((prev) => [
       ...prev,
       {
-        word: jsonData.word,
-        images: urls,
-        imageNames,
+        id,
+        word: newCard.word,
+        images: imageUrls,
+        imageFiles,
         audio: audioUrl,
-        tags: jsonData.tags,
-        folderName: jsonData.folderName,
+        audioFile,
+        tags: Array.isArray(newCard.tags) ? newCard.tags : [],
+        recordings: [],
       },
     ]);
   };
 
-  // ----- Save card (merge kept + new images; delete removed; preserve filenames) -----
+  /* -------------------------
+     Save Card (edit)
+     ------------------------- */
   const handleSaveCard = async (updatedCard, files) => {
     if (!directoryHandle) return;
-    if (!updatedCard.folderName) return;
+    const index = await readIndex();
 
-    const cardFolder = await directoryHandle.getDirectoryHandle(updatedCard.folderName, { create: true });
+    const idx = index.cards.findIndex((c) => c.id === updatedCard.id);
+    if (idx === -1) return;
+    const existing = index.cards[idx];
 
-    const existing = cards.find((c) => c.folderName === updatedCard.folderName) || {};
-    const oldNames = Array.isArray(existing.imageNames) ? existing.imageNames : [];
-    const keepNames = Array.isArray(updatedCard.imagesKeep) ? updatedCard.imagesKeep : oldNames;
+    // Keep list provided by UI (filenames)
+    const keepNames = Array.isArray(updatedCard.imagesKeep)
+      ? updatedCard.imagesKeep
+      : existing.imageFiles;
 
-    // Delete removed files
-    for (const name of oldNames) {
+    // Remove deleted images from disk
+    for (const name of existing.imageFiles) {
       if (!keepNames.includes(name)) {
-        try {
-          await cardFolder.removeEntry(name);
-        } catch (e) {
-          console.warn("Could not remove", name, e);
-        }
+        await deleteFromDirIfExists("images", name);
       }
     }
 
-    // Add newly selected images
-    const newImageNames = [];
-    for (const imgFile of files.images || []) {
-      const imgHandle = await cardFolder.getFileHandle(imgFile.name, { create: true });
-      const writable = await imgHandle.createWritable();
-      await writable.write(await imgFile.arrayBuffer());
-      await writable.close();
-      newImageNames.push(imgFile.name);
+    // Add new images
+    const appended = [];
+    for (const img of files.images || []) {
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
+      await writeFileToDir("images", fname, img);
+      appended.push(fname);
     }
 
-    // Audio (replace only if a new one provided; else keep what's in JSON)
-    let audioPath = null;
+    // Audio: replace only if provided
+    let audioFile = existing.audioFile || null;
     if (files.audio) {
-      const audioHandle = await cardFolder.getFileHandle(files.audio.name, { create: true });
-      const writable = await audioHandle.createWritable();
-      await writable.write(await files.audio.arrayBuffer());
-      await writable.close();
-      audioPath = files.audio.name;
-    } else {
-      try {
-        const cardFileOld = await cardFolder.getFileHandle("card.json");
-        const textOld = await (await cardFileOld.getFile()).text();
-        const parsedOld = JSON.parse(textOld);
-        if (parsedOld && parsedOld.audio) audioPath = parsedOld.audio;
-      } catch {
-        // ignore
-      }
+      // optional: delete old
+      if (audioFile) await deleteFromDirIfExists("audio", audioFile);
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
+      await writeFileToDir("audio", fname, files.audio);
+      audioFile = fname;
     }
 
-    const finalImageNames = [...keepNames, ...newImageNames];
+    const finalImageFiles = [...keepNames, ...appended];
 
-    const jsonData = {
+    // Update index card
+    const updatedAt = new Date().toISOString();
+    const nextCard = {
+      ...existing,
       word: updatedCard.word,
-      images: finalImageNames,
-      audio: audioPath,
+      imageFiles: finalImageFiles,
+      audioFile,
       tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
-      folderName: updatedCard.folderName,
+      updatedAt,
     };
+    index.cards[idx] = nextCard;
+    await writeIndex(index);
 
-    const cardFile = await cardFolder.getFileHandle("card.json", { create: true });
-    const writable = await cardFile.createWritable();
-    await writable.write(JSON.stringify(jsonData));
-    await writable.close();
-
-    // Rebuild URLs from disk for state
-    const urls = await Promise.all(
-      finalImageNames.map(async (name) => {
-        const f = await cardFolder.getFileHandle(name);
-        return URL.createObjectURL(await f.getFile());
-      })
-    );
-
-    let audioUrl = null;
-    if (jsonData.audio) {
-      const f = await cardFolder.getFileHandle(jsonData.audio);
-      audioUrl = URL.createObjectURL(await f.getFile());
+    // Rebuild state card with URLs
+    const imageUrls = [];
+    for (const fname of finalImageFiles) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
     }
-
-    const cardState = {
-      word: jsonData.word,
-      images: urls,
-      imageNames: finalImageNames,
-      audio: audioUrl,
-      tags: jsonData.tags,
-      folderName: jsonData.folderName,
-    };
+    let audioUrl = null;
+    if (audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", audioFile);
+    }
 
     setCards((prev) =>
-      prev.map((c) => (c.folderName === updatedCard.folderName ? cardState : c))
+      prev.map((c) =>
+        c.id === updatedCard.id
+          ? {
+              id: updatedCard.id,
+              word: updatedCard.word,
+              images: imageUrls,
+              imageFiles: finalImageFiles,
+              audio: audioUrl,
+              audioFile,
+              tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
+              recordings: Array.isArray(c.recordings) ? c.recordings : [],
+            }
+          : c
+      )
     );
   };
 
+  /* -------------------------
+     Save pronunciation recording
+     ------------------------- */
+  async function savePronunciation(cardId, blob, ext = "webm") {
+    if (!directoryHandle || !blob || typeof cardId !== "number") return;
+
+    const stamp = new Date();
+    const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
+      stamp.getMonth() + 1
+    ).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}-${String(
+      stamp.getHours()
+    ).padStart(2, "0")}${String(stamp.getMinutes()).padStart(
+      2,
+      "0"
+    )}${String(stamp.getSeconds()).padStart(2, "0")}.${ext}`;
+
+    await writeFileToDir("recordings", fileName, blob);
+
+    // Append to index card.recordings (newest first)
+    const index = await readIndex();
+    const card = index.cards.find((c) => c.id === cardId);
+    if (card) {
+      const rec = {
+        file: fileName,
+        ts: stamp.toISOString(),
+        bytes: blob.size || undefined,
+        mime: blob.type || undefined,
+      };
+      if (!Array.isArray(card.recordings)) card.recordings = [];
+      card.recordings.unshift(rec);
+      card.updatedAt = new Date().toISOString();
+      await writeIndex(index);
+    }
+
+    // Update state
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              recordings: [{ file: fileName, ts: stamp.toISOString(), bytes: blob.size || undefined, mime: blob.type || undefined }, ...(c.recordings || [])],
+            }
+          : c
+      )
+    );
+  }
+
+  /* -------------------------
+     Folder select UI (unchanged)
+     ------------------------- */
   if (!folderReady) {
     return (
       <div className="app-root">
@@ -324,7 +424,7 @@ function App() {
           >
             ☰
           </button>
-            <h1 className="app-title">Flashcards</h1>
+          <h1 className="app-title">Flashcards</h1>
         </header>
 
         <main className="app-main">
@@ -337,8 +437,8 @@ function App() {
                 onClick={async () => {
                   const handle = await pickDirectory();
                   if (handle) {
-                    const loaded = await loadCardsFromDirectory();
-                    setCards(loaded);
+                    const { cardsState } = await loadCardsForState();
+                    setCards(cardsState);
                     setFolderReady(true);
                   }
                 }}
@@ -355,8 +455,8 @@ function App() {
                   const status = await restorableHandle.requestPermission({ mode: "readwrite" });
                   if (status === "granted") {
                     directoryHandle = restorableHandle;
-                    const loaded = await loadCardsFromDirectory();
-                    setCards(loaded);
+                    const { cardsState } = await loadCardsForState();
+                    setCards(cardsState);
                     setFolderReady(true);
                     setNeedsReconnect(false);
                   }
@@ -371,7 +471,10 @@ function App() {
     );
   }
 
-  let content;
+  /* -------------------------
+     Screens
+     ------------------------- */
+  let content = null;
   if (screen === "review") {
     content = (
       <ReviewScreen
@@ -380,12 +483,6 @@ function App() {
         onSaveRecording={savePronunciation}
       />
     );
-  } else if (screen === "add") {
-    // (Kept for compatibility; CardsScreen handles add/edit now)
-    content = null;
-  } else if (screen === "edit") {
-    // (Kept for compatibility)
-    content = null;
   } else if (screen === "cards") {
     content = (
       <CardsScreen
@@ -423,10 +520,8 @@ function App() {
         <h1 className="app-title">Flashcards</h1>
       </header>
 
-      {/* Backdrop to close menu on outside click */}
       {menuOpen && <div className="app-backdrop" onClick={() => setMenuOpen(false)} />}
 
-      {/* Sliding Menu */}
       <nav className={`app-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
         <ul className="app-menu-list">
           <li><button className="app-menu-item" onClick={() => navigate("review")}>Review</button></li>
