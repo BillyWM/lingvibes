@@ -28,26 +28,25 @@ function uniqueMerge(prevTags, newOnes) {
 }
 
 export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
-  // ---- Add form state ----
+  // Add form
   const [newWord, setNewWord] = useState("");
-  const [newImages, setNewImages] = useState([]); // File[]
-  const [newAudio, setNewAudio] = useState(null); // File|null
+  const [newImages, setNewImages] = useState([]);
+  const [newAudio, setNewAudio] = useState(null);
   const [newTagsText, setNewTagsText] = useState("");
 
-  // ---- Search + Pagination ----
+  // Search + Pagination
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  // ---- Edit state ----
+  // Edit state
   const [editingId, setEditingId] = useState(null);
   const [editWord, setEditWord] = useState("");
-  const [editImages, setEditImages] = useState([]); // new File[] to append
+  const [editImages, setEditImages] = useState([]); // new File[]
   const [editAudio, setEditAudio] = useState(null);
-  const [editTags, setEditTags] = useState([]); // array of strings
+  const [editTags, setEditTags] = useState([]);
   const [editTagInput, setEditTagInput] = useState("");
 
-  // Existing images for the card being edited:
-  // [{ name: <filename from FS>, url: <objectURL> }, ...]
+  // Existing images: [{ name, url }]
   const [editExistingImgs, setEditExistingImgs] = useState([]);
 
   // Previews
@@ -72,40 +71,28 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+  useEffect(() => { setPage(1); }, [query]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
   const start = (page - 1) * PAGE_SIZE;
   const end = start + PAGE_SIZE;
   const pageItems = filtered.slice(start, end);
 
-  // ---- Add handlers ----
+  // Add handlers
   function handleNewImagesChange(e) {
     const files = e.target.files ? Array.from(e.target.files) : [];
-    // Append instead of replace
     setNewImages((prev) => [...prev, ...files]);
-    // Let the same file be picked again later if needed
     e.target.value = "";
   }
-
   function handleNewAudioChange(e) {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
     setNewAudio(f);
   }
-
   async function submitAdd(e) {
     e.preventDefault();
     if (!newWord.trim()) return;
-
     const tags = parseTagsInput(newTagsText);
-    const files = { images: newImages, audio: newAudio };
-    await onAddCard({ word: newWord.trim(), tags }, files);
-
+    await onAddCard({ word: newWord.trim(), tags }, { images: newImages, audio: newAudio });
     setNewWord("");
     setNewImages([]);
     setNewAudio(null);
@@ -113,22 +100,20 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
     e.target.reset();
   }
 
-  // ---- Edit handlers ----
+  // Edit handlers
   function beginEdit(card) {
-    setEditingId(card.folderName);
+    setEditingId(card.id);
     setEditWord(card.word || "");
     setEditImages([]);
     setEditAudio(null);
     setEditTags(Array.isArray(card.tags) ? [...card.tags] : []);
     setEditTagInput("");
 
-    // Pair filenames with URLs so we can show and delete by filename.
-    const names = Array.isArray(card.imageNames) ? card.imageNames : [];
+    const names = Array.isArray(card.imageFiles) ? card.imageFiles : [];
     const urls = Array.isArray(card.images) ? card.images : [];
     const paired = names.map((name, i) => ({ name, url: urls[i] || null }));
     setEditExistingImgs(paired);
   }
-
   function cancelEdit() {
     setEditingId(null);
     setEditWord("");
@@ -138,36 +123,28 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
     setEditTagInput("");
     setEditExistingImgs([]);
   }
-
   function handleEditImagesChange(e) {
     const files = e.target.files ? Array.from(e.target.files) : [];
-    // Append new selections
     setEditImages((prev) => [...prev, ...files]);
     e.target.value = "";
   }
-
   function handleEditAudioChange(e) {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
     setEditAudio(f);
   }
-
-  // Tags (edit)
   function addEditTagsFromText(text) {
     const tags = parseInlineTags(text);
-    if (tags.length === 0) return;
+    if (!tags.length) return;
     setEditTags((prev) => uniqueMerge(prev, tags));
   }
-
   function addEditTag() {
     if (!editTagInput.trim()) return;
     addEditTagsFromText(editTagInput);
     setEditTagInput("");
   }
-
   function removeEditTag(tag) {
     setEditTags((prev) => prev.filter((t) => t !== tag));
   }
-
   function handleEditTagInputChange(e) {
     const val = e.target.value;
     if (val.includes(",")) {
@@ -180,7 +157,6 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
       setEditTagInput(val);
     }
   }
-
   function handleEditTagKeyDown(e) {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -190,28 +166,25 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
       }
     }
   }
-
   function removeExistingImage(name) {
     setEditExistingImgs((prev) => prev.filter((it) => it.name !== name));
   }
-
   async function submitEdit(e, original) {
     e.preventDefault();
     if (!original) return;
 
-    const imagesKeep = editExistingImgs.map((it) => it.name); // filenames to keep
+    const imagesKeep = editExistingImgs.map((it) => it.name);
     const updated = {
+      id: original.id,
       word: editWord.trim() || original.word,
-      folderName: original.folderName,
       tags: editTags,
-      imagesKeep
+      imagesKeep,
     };
     const files = { images: editImages, audio: editAudio };
     await onSaveCard(updated, files);
     cancelEdit();
   }
 
-  // ---- Pagination UI ----
   function Pagination() {
     if (totalPages <= 1) return null;
     return (
@@ -223,9 +196,7 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
         >
           ‹ Prev
         </button>
-        <span className="cards-pageinfo">
-          Page {page} of {totalPages}
-        </span>
+        <span className="cards-pageinfo">Page {page} of {totalPages}</span>
         <button
           className="cards-pagebtn"
           onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -319,13 +290,13 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
 
       <ul className="cards-list">
         {pageItems.map((card) => {
-          const isEditing = editingId === card.folderName;
+          const isEditing = editingId === card.id;
           const tags = Array.isArray(card.tags) ? card.tags : [];
           const visible = tags.slice(0, 4);
           const extra = Math.max(0, tags.length - visible.length);
 
           return (
-            <li key={card.folderName} className="cards-item">
+            <li key={card.id} className="cards-item">
               <div className="cards-item-row">
                 <div className="cards-word">
                   {card.word}
@@ -339,21 +310,16 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
                   )}
                 </div>
                 <div className="cards-buttons">
-                  <button
-                    className="cards-edit"
-                    onClick={() => beginEdit(card)}
-                  >
-                    Edit
-                  </button>
+                  <button className="cards-edit" onClick={() => beginEdit(card)}>Edit</button>
                 </div>
               </div>
 
               {isEditing && (
                 <form className="cards-edit-form" onSubmit={(e) => submitEdit(e, card)}>
                   <div className="cards-row">
-                    <label className="cards-label" htmlFor={`edit-word-${card.folderName}`}>Word</label>
+                    <label className="cards-label" htmlFor={`edit-word-${card.id}`}>Word</label>
                     <input
-                      id={`edit-word-${card.folderName}`}
+                      id={`edit-word-${card.id}`}
                       className="cards-input"
                       type="text"
                       value={editWord}
@@ -402,7 +368,7 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
                     </div>
                   </div>
 
-                  {/* Existing images with delete (×) */}
+                  {/* Existing images with delete */}
                   <div className="cards-row">
                     <label className="cards-label">Images</label>
                     <div className="cards-existing-images">
@@ -425,9 +391,9 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
 
                   {/* Add more images incrementally */}
                   <div className="cards-row">
-                    <label className="cards-label" htmlFor={`edit-images-${card.folderName}`}>Add Images</label>
+                    <label className="cards-label" htmlFor={`edit-images-${card.id}`}>Add Images</label>
                     <input
-                      id={`edit-images-${card.folderName}`}
+                      id={`edit-images-${card.id}`}
                       className="cards-file"
                       type="file"
                       accept="image/*"
@@ -445,9 +411,9 @@ export default function CardsScreen({ cards, onAddCard, onSaveCard }) {
                   )}
 
                   <div className="cards-row">
-                    <label className="cards-label" htmlFor={`edit-audio-${card.folderName}`}>Audio</label>
+                    <label className="cards-label" htmlFor={`edit-audio-${card.id}`}>Audio</label>
                     <input
-                      id={`edit-audio-${card.folderName}`}
+                      id={`edit-audio-${card.id}`}
                       className="cards-file"
                       type="file"
                       accept="audio/*"
