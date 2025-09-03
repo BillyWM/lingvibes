@@ -203,7 +203,11 @@ function App() {
     const handle = await window.showDirectoryPicker();
     await saveDirectoryHandle(handle);
     if (navigator.storage && navigator.storage.persist) {
-      try { await navigator.storage.persist(); } catch {}
+      try {
+        await navigator.storage.persist();
+      } catch {
+        /* ignore */
+      }
     }
     directoryHandle = handle;
     return handle;

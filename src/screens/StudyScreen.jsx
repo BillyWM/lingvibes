@@ -28,7 +28,11 @@ export default function StudyScreen({ cards = [], micEnabled = false, onSaveReco
     if (!audioRef.current || !card || !card.audio) return;
     audioRef.current.src = card.audio;
     audioRef.current.currentTime = 0;
-    try { await audioRef.current.play(); } catch {}
+    try {
+      await audioRef.current.play();
+    } catch {
+      /* ignore */
+    }
     await new Promise((resolve) => {
       const el = audioRef.current;
       if (!el) return resolve();
