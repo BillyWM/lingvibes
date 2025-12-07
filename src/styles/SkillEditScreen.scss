@@ -1,0 +1,166 @@
+.skill-root {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.skill-title {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.skill-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.skill-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skill-slot-note {
+  font-size: 12px;
+  color: #666;
+}
+
+.skill-label {
+  font-size: 14px;
+}
+
+.skill-input {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+.skill-columns {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.skill-section--left,
+.skill-section--right {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.skill-subtitle {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.skill-empty {
+  font-size: 13px;
+  color: #666;
+}
+
+.skill-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.skill-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background-color: #f5f5f5;
+}
+
+.skill-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 220px;
+}
+
+.skill-card-word {
+  font-size: 14px;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.skill-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skill-tag-pill {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  background-color: #e0e0e0;
+}
+
+.skill-tag-more {
+  font-size: 11px;
+  color: #555;
+}
+
+.skill-remove-button,
+.skill-add-button,
+.skill-add-all-button {
+  border: none;
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.skill-remove-button {
+  background-color: #f3c0c0;
+}
+
+.skill-add-button {
+  background-color: #cce3ff;
+}
+
+.skill-add-all {
+  margin: 8px 0;
+}
+
+.skill-add-all-button {
+  background-color: #d9f1d9;
+}
+
+.skill-filter-note {
+  font-size: 12px;
+  color: #666;
+}
+
+.skill-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.skill-save-button,
+.skill-cancel-button {
+  border: none;
+  border-radius: 9999px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.skill-save-button {
+  background-color: #cce3ff;
+}
+
+.skill-cancel-button {
+  background-color: #e0e0e0;
+}
