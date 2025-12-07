@@ -109,7 +109,6 @@ async function readIndex() {
     const text = await file.text();
     const obj = JSON.parse(text);
 
-    // basic sanity
     if (!obj || typeof obj !== "object") {
       throw new Error("bad index");
     }
@@ -147,7 +146,7 @@ async function writeIndex(indexObj) {
   const fh = await directoryHandle.getFileHandle("cards.json", {
     create: true,
   });
-  const writable = await fh.createWritable(); // atomic commit on close
+  const writable = await fh.createWritable();
   await writable.write(json);
   await writable.close();
 }
@@ -172,10 +171,10 @@ async function loadCardsForState() {
     cardsState.push({
       id: c.id,
       word: c.word,
-      images: imageUrls, // blob URLs for UI
-      imageFiles: c.imageFiles || [], // filenames on disk
-      audio: audioUrl, // blob URL
-      audioFile: c.audioFile || null, // filename on disk
+      images: imageUrls,
+      imageFiles: c.imageFiles || [],
+      audio: audioUrl,
+      audioFile: c.audioFile || null,
       tags: Array.isArray(c.tags) ? c.tags : [],
       recordings: Array.isArray(c.recordings) ? c.recordings : [],
     });
@@ -244,9 +243,6 @@ function App() {
     }
   };
 
-  /* -------------------------
-     Select Folder
-     ------------------------- */
   async function pickDirectory() {
     const handle = await window.showDirectoryPicker();
     await saveDirectoryHandle(handle);
@@ -262,7 +258,7 @@ function App() {
   }
 
   /* -------------------------
-     Add Card (uses index)
+     Add Card
      ------------------------- */
   const handleAddCard = async (newCard, files) => {
     if (!directoryHandle) return;
@@ -271,7 +267,6 @@ function App() {
     const id = index.nextCardNo++;
     const createdAt = new Date().toISOString();
 
-    // Images
     const imageFiles = [];
     for (const img of files.images || []) {
       const mediaNo = index.nextMediaNo++;
@@ -280,7 +275,6 @@ function App() {
       imageFiles.push(fname);
     }
 
-    // Audio (single)
     let audioFile = null;
     if (files.audio) {
       const mediaNo = index.nextMediaNo++;
@@ -303,7 +297,6 @@ function App() {
     index.cards.push(cardEntry);
     await writeIndex(index);
 
-    // Build state object with blob URLs
     const imageUrls = [];
     for (const fname of imageFiles) {
       const url = await blobUrlFromDirFile("images", fname);
@@ -340,19 +333,16 @@ function App() {
     if (idx === -1) return;
     const existing = index.cards[idx];
 
-    // Keep list provided by UI (filenames)
     const keepNames = Array.isArray(updatedCard.imagesKeep)
       ? updatedCard.imagesKeep
       : existing.imageFiles;
 
-    // Remove deleted images from disk
     for (const name of existing.imageFiles) {
       if (!keepNames.includes(name)) {
         await deleteFromDirIfExists("images", name);
       }
     }
 
-    // Append new images
     const appended = [];
     for (const img of files.images || []) {
       const mediaNo = index.nextMediaNo++;
@@ -361,10 +351,8 @@ function App() {
       appended.push(fname);
     }
 
-    // Audio
     let audioFile = existing.audioFile || null;
     if (files.audio) {
-      // optional: delete old
       if (audioFile) await deleteFromDirIfExists("audio", audioFile);
       const mediaNo = index.nextMediaNo++;
       const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
@@ -374,7 +362,6 @@ function App() {
 
     const finalImageFiles = [...keepNames, ...appended];
 
-    // Update index card
     const updatedAt = new Date().toISOString();
     const nextCard = {
       ...existing,
@@ -387,7 +374,6 @@ function App() {
     index.cards[idx] = nextCard;
     await writeIndex(index);
 
-    // Rebuild state card with URLs
     const imageUrls = [];
     for (const fname of finalImageFiles) {
       const url = await blobUrlFromDirFile("images", fname);
@@ -424,16 +410,18 @@ function App() {
     const stamp = new Date();
     const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
       stamp.getMonth() + 1
-    ).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}-${String(
-      stamp.getHours()
-    ).padStart(2, "0")}${String(stamp.getMinutes()).padStart(
+    ).padStart(2, "0")}${String(stamp.getDate()).padStart(
       2,
       "0"
-    )}${String(stamp.getSeconds()).padStart(2, "0")}.${ext}`;
+    )}-${String(stamp.getHours()).padStart(2, "0")}${String(
+      stamp.getMinutes()
+    ).padStart(2, "0")}${String(stamp.getSeconds()).padStart(
+      2,
+      "0"
+    )}.${ext}`;
 
     await writeFileToDir("recordings", fileName, blob);
 
-    // Append to index card.recordings (newest first)
     const index = await readIndex();
     const card = index.cards.find((c) => c.id === cardId);
     if (card) {
@@ -449,7 +437,6 @@ function App() {
       await writeIndex(index);
     }
 
-    // Update state
     setCards((prev) =>
       prev.map((c) =>
         c.id === cardId
@@ -473,7 +460,6 @@ function App() {
   /* -------------------------
      Skill helpers
      ------------------------- */
-
   const visibleCards = useMemo(() => {
     if (!activeSkillId) return cards;
     const skill = skills.find((s) => s.id === activeSkillId);
@@ -507,8 +493,11 @@ function App() {
   const handleAddTreeRow = async () => {
     if (!directoryHandle) return;
     const index = await readIndex();
-    const nextRows =
-      (typeof index.treeRows === "number" ? index.treeRows : treeRows) + 1;
+    const currentRows =
+      typeof index.treeRows === "number" && index.treeRows > 0
+        ? index.treeRows
+        : treeRows;
+    const nextRows = currentRows + 1;
     index.treeRows = nextRows;
     await writeIndex(index);
     setTreeRows(nextRows);
@@ -521,7 +510,6 @@ function App() {
     let skillsArr = Array.isArray(index.skills) ? index.skills.slice() : [];
     let skillId = editingSkillId;
 
-    // assign new id if creating
     if (skillId == null) {
       const nextNo =
         typeof index.nextSkillNo === "number" && index.nextSkillNo > 0
@@ -535,12 +523,10 @@ function App() {
     const order =
       typeof editingSkillSlot === "number" ? editingSkillSlot : 0;
     const ids = Array.isArray(cardIds) ? cardIds.slice() : [];
-
     const existingIdx = skillsArr.findIndex((s) => s.id === skillId);
     const now = new Date().toISOString();
 
     if (existingIdx === -1) {
-      // new skill
       skillsArr.push({
         id: skillId,
         name: trimmedName,
@@ -550,7 +536,6 @@ function App() {
         updatedAt: now,
       });
     } else {
-      // update existing
       const existing = skillsArr[existingIdx];
       skillsArr[existingIdx] = {
         ...existing,
@@ -570,6 +555,44 @@ function App() {
     setScreen("tree");
   };
 
+  /* -------------------------
+     Mode title (top bar)
+     ------------------------- */
+  const modeTitle = useMemo(() => {
+    let base;
+    switch (screen) {
+      case "review":
+        base = "Review";
+        break;
+      case "study":
+        base = "Study";
+        break;
+      case "cards":
+        base = "Cards";
+        break;
+      case "options":
+        base = "Options";
+        break;
+      case "tree":
+        base = "Tree";
+        break;
+      case "skillEdit":
+        base = "Skill Editor";
+        break;
+      default:
+        base = "Flashcards";
+        break;
+    }
+
+    if ((screen === "review" || screen === "study") && activeSkillId) {
+      const skill = skills.find((s) => s.id === activeSkillId);
+      if (skill && skill.name) {
+        return `${base} :: ${skill.name}`;
+      }
+    }
+
+    return base;
+  }, [screen, activeSkillId, skills]);
 
   /* -------------------------
      Folder select UI
@@ -584,7 +607,7 @@ function App() {
           >
             ☰
           </button>
-          <h1 className="app-title">Flashcards</h1>
+          <h1 className="app-title">{modeTitle}</h1>
         </header>
 
         <main className="app-main">
@@ -731,7 +754,7 @@ function App() {
         >
           ☰
         </button>
-        <h1 className="app-title">Flashcards</h1>
+        <h1 className="app-title">{modeTitle}</h1>
       </header>
 
       {menuOpen && (
