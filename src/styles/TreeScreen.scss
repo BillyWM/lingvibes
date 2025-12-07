@@ -82,6 +82,7 @@
   bottom: 0;
   width: 50%;
   cursor: pointer;
+  pointer-events: auto; /* ensure these actually receive clicks */
 }
 
 .tree-circle-half--left {
@@ -100,6 +101,7 @@
   line-height: 1.2;
   max-width: 80%;
   word-wrap: break-word;
+  pointer-events: none;
 }
 
 .tree-footer {
