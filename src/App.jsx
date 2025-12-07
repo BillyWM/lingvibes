@@ -514,42 +514,51 @@ function App() {
     setTreeRows(nextRows);
   };
 
-  const handleSaveSkill = async (skillPayload) => {
+  const handleSaveSkill = async (name, cardIds) => {
     if (!directoryHandle) return;
     const index = await readIndex();
 
     let skillsArr = Array.isArray(index.skills) ? index.skills.slice() : [];
-    let skillId = skillPayload.id;
+    let skillId = editingSkillId;
 
-    if (!skillId) {
-      skillId = index.nextSkillNo || 1;
-      index.nextSkillNo = skillId + 1;
+    // assign new id if creating
+    if (skillId == null) {
+      const nextNo =
+        typeof index.nextSkillNo === "number" && index.nextSkillNo > 0
+          ? index.nextSkillNo
+          : 1;
+      skillId = nextNo;
+      index.nextSkillNo = nextNo + 1;
     }
 
+    const trimmedName = (name || "").trim() || "Untitled";
+    const order =
+      typeof editingSkillSlot === "number" ? editingSkillSlot : 0;
+    const ids = Array.isArray(cardIds) ? cardIds.slice() : [];
+
     const existingIdx = skillsArr.findIndex((s) => s.id === skillId);
-    const skillRecord = {
-      id: skillId,
-      name: skillPayload.name || "",
-      cardIds: Array.isArray(skillPayload.cardIds)
-        ? skillPayload.cardIds.slice()
-        : [],
-      order:
-        typeof skillPayload.order === "number"
-          ? skillPayload.order
-          : editingSkillSlot ?? 0,
-      createdAt:
-        existingIdx === -1 && skillPayload.createdAt
-          ? skillPayload.createdAt
-          : existingIdx === -1
-          ? new Date().toISOString()
-          : skillsArr[existingIdx].createdAt,
-      updatedAt: new Date().toISOString(),
-    };
+    const now = new Date().toISOString();
 
     if (existingIdx === -1) {
-      skillsArr.push(skillRecord);
+      // new skill
+      skillsArr.push({
+        id: skillId,
+        name: trimmedName,
+        cardIds: ids,
+        order,
+        createdAt: now,
+        updatedAt: now,
+      });
     } else {
-      skillsArr[existingIdx] = skillRecord;
+      // update existing
+      const existing = skillsArr[existingIdx];
+      skillsArr[existingIdx] = {
+        ...existing,
+        name: trimmedName,
+        cardIds: ids,
+        order,
+        updatedAt: now,
+      };
     }
 
     index.skills = skillsArr;
@@ -560,6 +569,7 @@ function App() {
     setEditingSkillSlot(null);
     setScreen("tree");
   };
+
 
   /* -------------------------
      Folder select UI

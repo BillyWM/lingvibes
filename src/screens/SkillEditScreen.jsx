@@ -59,6 +59,7 @@ function SkillEditScreen({ skill, slotIndex, cards, onSave, onCancel }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // send exactly (name, cardIds) to App
     onSave(name.trim(), selectedIds);
   };
 
@@ -146,8 +147,7 @@ function SkillEditScreen({ skill, slotIndex, cards, onSave, onCancel }) {
               placeholder="e.g. food kitchen"
             />
             <div className="skill-filter-note">
-              Shows cards whose tags contain <strong>all</strong>{" "}
-              of these.
+              Shows cards whose tags contain <strong>all</strong> of these.
             </div>
 
             {filteredCandidates.length > 0 && (
