@@ -8,7 +8,6 @@ import SkillEditScreen from "./screens/SkillEditScreen.jsx";
 import { openDB } from "idb";
 import "./App.scss";
 
-
 let directoryHandle = null;
 
 /* =========================
@@ -16,11 +15,11 @@ let directoryHandle = null;
    ========================= */
 async function getDB() {
   return await openDB("flashcards", 2, {
-	upgrade(db) {
-	  if (!db.objectStoreNames.contains("handles")) {
-		db.createObjectStore("handles");
-	  }
-	},
+    upgrade(db) {
+      if (!db.objectStoreNames.contains("handles")) {
+        db.createObjectStore("handles");
+      }
+    },
   });
 }
 
@@ -49,15 +48,18 @@ function sanitizeName(name) {
   return safe.slice(0, 80);
 }
 
+/* =========================
+   FS helpers
+   ========================= */
 async function getOrCreateDir(name) {
   return await directoryHandle.getDirectoryHandle(name, { create: true });
 }
 
 async function getDir(name) {
   try {
-	return await directoryHandle.getDirectoryHandle(name, { create: false });
+    return await directoryHandle.getDirectoryHandle(name, { create: false });
   } catch {
-	return null;
+    return null;
   }
 }
 
@@ -66,9 +68,9 @@ async function writeFileToDir(dirName, targetFilename, srcFileOrBlob) {
   const fileHandle = await dir.getFileHandle(targetFilename, { create: true });
   const writable = await fileHandle.createWritable();
   if ("arrayBuffer" in srcFileOrBlob) {
-	await writable.write(await srcFileOrBlob.arrayBuffer());
+    await writable.write(await srcFileOrBlob.arrayBuffer());
   } else {
-	await writable.write(srcFileOrBlob);
+    await writable.write(srcFileOrBlob);
   }
   await writable.close();
   return fileHandle;
@@ -76,10 +78,10 @@ async function writeFileToDir(dirName, targetFilename, srcFileOrBlob) {
 
 async function deleteFromDirIfExists(dirName, filename) {
   try {
-	const dir = await getOrCreateDir(dirName);
-	await dir.removeEntry(filename);
+    const dir = await getOrCreateDir(dirName);
+    await dir.removeEntry(filename);
   } catch {
-	// ignore missing
+    // ignore missing
   }
 }
 
@@ -87,11 +89,11 @@ async function blobUrlFromDirFile(dirName, filename) {
   const dir = await getDir(dirName);
   if (!dir) return null;
   try {
-	const fh = await dir.getFileHandle(filename);
-	const f = await fh.getFile();
-	return URL.createObjectURL(f);
+    const fh = await dir.getFileHandle(filename);
+    const f = await fh.getFile();
+    return URL.createObjectURL(f);
   } catch {
-	return null;
+    return null;
   }
 }
 
@@ -100,7 +102,9 @@ async function blobUrlFromDirFile(dirName, filename) {
    ========================= */
 async function readIndex() {
   try {
-    const fh = await directoryHandle.getFileHandle("cards.json", { create: false });
+    const fh = await directoryHandle.getFileHandle("cards.json", {
+      create: false,
+    });
     const file = await fh.getFile();
     const text = await file.text();
     const obj = JSON.parse(text);
@@ -118,7 +122,9 @@ async function readIndex() {
     // normalize skill-tree fields
     if (!Array.isArray(obj.skills)) obj.skills = [];
     if (typeof obj.treeRows !== "number" || obj.treeRows < 1) obj.treeRows = 2;
-    if (typeof obj.nextSkillNo !== "number" || obj.nextSkillNo < 1) obj.nextSkillNo = 1;
+    if (typeof obj.nextSkillNo !== "number" || obj.nextSkillNo < 1) {
+      obj.nextSkillNo = 1;
+    }
 
     return obj;
   } catch {
@@ -138,7 +144,9 @@ async function readIndex() {
 async function writeIndex(indexObj) {
   indexObj.updatedAt = new Date().toISOString();
   const json = JSON.stringify(indexObj, null, 2);
-  const fh = await directoryHandle.getFileHandle("cards.json", { create: true });
+  const fh = await directoryHandle.getFileHandle("cards.json", {
+    create: true,
+  });
   const writable = await fh.createWritable(); // atomic commit on close
   await writable.write(json);
   await writable.close();
@@ -152,25 +160,25 @@ async function loadCardsForState() {
 
   const cardsState = [];
   for (const c of index.cards) {
-	const imageUrls = [];
-	for (const fname of c.imageFiles || []) {
-	  const url = await blobUrlFromDirFile("images", fname);
-	  if (url) imageUrls.push(url);
-	}
-	let audioUrl = null;
-	if (c.audioFile) {
-	  audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
-	}
-	cardsState.push({
-	  id: c.id,
-	  word: c.word,
-	  images: imageUrls,          // blob URLs for UI
-	  imageFiles: c.imageFiles || [], // filenames on disk
-	  audio: audioUrl,            // blob URL
-	  audioFile: c.audioFile || null, // filename on disk
-	  tags: Array.isArray(c.tags) ? c.tags : [],
-	  recordings: Array.isArray(c.recordings) ? c.recordings : [],
-	});
+    const imageUrls = [];
+    for (const fname of c.imageFiles || []) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
+    }
+    let audioUrl = null;
+    if (c.audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
+    }
+    cardsState.push({
+      id: c.id,
+      word: c.word,
+      images: imageUrls, // blob URLs for UI
+      imageFiles: c.imageFiles || [], // filenames on disk
+      audio: audioUrl, // blob URL
+      audioFile: c.audioFile || null, // filename on disk
+      tags: Array.isArray(c.tags) ? c.tags : [],
+      recordings: Array.isArray(c.recordings) ? c.recordings : [],
+    });
   }
   return { index, cardsState };
 }
@@ -185,387 +193,588 @@ function App() {
   const [folderReady, setFolderReady] = useState(false);
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [restorableHandle, setRestorableHandle] = useState(null);
+
+  // skill tree
   const [skills, setSkills] = useState([]);
   const [treeRows, setTreeRows] = useState(2);
   const [activeSkillId, setActiveSkillId] = useState(null);
   const [editingSkillId, setEditingSkillId] = useState(null);
   const [editingSkillSlot, setEditingSkillSlot] = useState(null);
 
-
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
-	const stored = localStorage.getItem("options");
-	return stored ? JSON.parse(stored) : { micEnabled: false };
+    const stored = localStorage.getItem("options");
+    return stored ? JSON.parse(stored) : { micEnabled: false };
   });
+
   useEffect(() => {
-	localStorage.setItem("options", JSON.stringify(options));
+    localStorage.setItem("options", JSON.stringify(options));
   }, [options]);
 
   // Restore handle on startup
   useEffect(() => {
-	(async () => {
-	  const saved = await getSavedDirectoryHandle();
-	  if (!saved) return;
+    (async () => {
+      const saved = await getSavedDirectoryHandle();
+      if (!saved) return;
 
-	  const perm = await saved.queryPermission({ mode: "readwrite" });
-	  if (perm === "granted") {
-		directoryHandle = saved;
-		const { cardsState } = await loadCardsForState();
-		setCards(cardsState);
-		setFolderReady(true);
-	  } else if (perm === "prompt") {
-		setNeedsReconnect(true);
-		setRestorableHandle(saved);
-	  }
-	})();
+      const perm = await saved.queryPermission({ mode: "readwrite" });
+      if (perm === "granted") {
+        directoryHandle = saved;
+        const { index, cardsState } = await loadCardsForState();
+        setCards(cardsState);
+        setSkills(Array.isArray(index.skills) ? index.skills : []);
+        setTreeRows(
+          typeof index.treeRows === "number" && index.treeRows > 0
+            ? index.treeRows
+            : 2
+        );
+        setFolderReady(true);
+      } else if (perm === "prompt") {
+        setNeedsReconnect(true);
+        setRestorableHandle(saved);
+      }
+    })();
   }, []);
 
   const navigate = (target) => {
-	setMenuOpen(false);
-	setScreen(target);
+    setMenuOpen(false);
+    setScreen(target);
+    if (target === "review" || target === "study") {
+      setActiveSkillId(null);
+    }
   };
 
   /* -------------------------
-	 Select Folder
-	 ------------------------- */
+     Select Folder
+     ------------------------- */
   async function pickDirectory() {
-	const handle = await window.showDirectoryPicker();
-	await saveDirectoryHandle(handle);
-	if (navigator.storage && navigator.storage.persist) {
-	  try {
-		await navigator.storage.persist();
-	  } catch {
-		/* ignore */
-	  }
-	}
-	directoryHandle = handle;
-	return handle;
+    const handle = await window.showDirectoryPicker();
+    await saveDirectoryHandle(handle);
+    if (navigator.storage && navigator.storage.persist) {
+      try {
+        await navigator.storage.persist();
+      } catch {
+        /* ignore */
+      }
+    }
+    directoryHandle = handle;
+    return handle;
   }
 
   /* -------------------------
-	 Add Card (uses index)
-	 ------------------------- */
+     Add Card (uses index)
+     ------------------------- */
   const handleAddCard = async (newCard, files) => {
-	if (!directoryHandle) return;
+    if (!directoryHandle) return;
 
-	const index = await readIndex();
-	const id = index.nextCardNo++;
-	const createdAt = new Date().toISOString();
+    const index = await readIndex();
+    const id = index.nextCardNo++;
+    const createdAt = new Date().toISOString();
 
-	// Images
-	const imageFiles = [];
-	for (const img of files.images || []) {
-	  const mediaNo = index.nextMediaNo++;
-	  const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
-	  await writeFileToDir("images", fname, img);
-	  imageFiles.push(fname);
-	}
+    // Images
+    const imageFiles = [];
+    for (const img of files.images || []) {
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
+      await writeFileToDir("images", fname, img);
+      imageFiles.push(fname);
+    }
 
-	// Audio (single)
-	let audioFile = null;
-	if (files.audio) {
-	  const mediaNo = index.nextMediaNo++;
-	  const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
-	  await writeFileToDir("audio", fname, files.audio);
-	  audioFile = fname;
-	}
+    // Audio (single)
+    let audioFile = null;
+    if (files.audio) {
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
+      await writeFileToDir("audio", fname, files.audio);
+      audioFile = fname;
+    }
 
-	const cardEntry = {
-	  id,
-	  word: newCard.word,
-	  imageFiles,
-	  audioFile,
-	  tags: Array.isArray(newCard.tags) ? newCard.tags : [],
-	  recordings: [],
-	  createdAt,
-	  updatedAt: createdAt,
-	};
+    const cardEntry = {
+      id,
+      word: newCard.word,
+      imageFiles,
+      audioFile,
+      tags: Array.isArray(newCard.tags) ? newCard.tags : [],
+      recordings: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
 
-	index.cards.push(cardEntry);
-	await writeIndex(index);
+    index.cards.push(cardEntry);
+    await writeIndex(index);
 
-	// Build state object with blob URLs
-	const imageUrls = [];
-	for (const fname of imageFiles) {
-	  const url = await blobUrlFromDirFile("images", fname);
-	  if (url) imageUrls.push(url);
-	}
-	let audioUrl = null;
-	if (audioFile) {
-	  audioUrl = await blobUrlFromDirFile("audio", audioFile);
-	}
+    // Build state object with blob URLs
+    const imageUrls = [];
+    for (const fname of imageFiles) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
+    }
+    let audioUrl = null;
+    if (audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", audioFile);
+    }
 
-	setCards((prev) => [
-	  ...prev,
-	  {
-		id,
-		word: newCard.word,
-		images: imageUrls,
-		imageFiles,
-		audio: audioUrl,
-		audioFile,
-		tags: Array.isArray(newCard.tags) ? newCard.tags : [],
-		recordings: [],
-	  },
-	]);
+    setCards((prev) => [
+      ...prev,
+      {
+        id,
+        word: newCard.word,
+        images: imageUrls,
+        imageFiles,
+        audio: audioUrl,
+        audioFile,
+        tags: Array.isArray(newCard.tags) ? newCard.tags : [],
+        recordings: [],
+      },
+    ]);
   };
 
   /* -------------------------
-	 Save Card (edit)
-	 ------------------------- */
+     Save Card (edit)
+     ------------------------- */
   const handleSaveCard = async (updatedCard, files) => {
-	if (!directoryHandle) return;
-	const index = await readIndex();
+    if (!directoryHandle) return;
+    const index = await readIndex();
 
-	const idx = index.cards.findIndex((c) => c.id === updatedCard.id);
-	if (idx === -1) return;
-	const existing = index.cards[idx];
+    const idx = index.cards.findIndex((c) => c.id === updatedCard.id);
+    if (idx === -1) return;
+    const existing = index.cards[idx];
 
-	// Keep list provided by UI (filenames)
-	const keepNames = Array.isArray(updatedCard.imagesKeep)
-	  ? updatedCard.imagesKeep
-	  : existing.imageFiles;
+    // Keep list provided by UI (filenames)
+    const keepNames = Array.isArray(updatedCard.imagesKeep)
+      ? updatedCard.imagesKeep
+      : existing.imageFiles;
 
-	// Remove deleted images from disk
-	for (const name of existing.imageFiles) {
-	  if (!keepNames.includes(name)) {
-		await deleteFromDirIfExists("images", name);
-	  }
-	}
+    // Remove deleted images from disk
+    for (const name of existing.imageFiles) {
+      if (!keepNames.includes(name)) {
+        await deleteFromDirIfExists("images", name);
+      }
+    }
 
-	// Add new images
-	const appended = [];
-	for (const img of files.images || []) {
-	  const mediaNo = index.nextMediaNo++;
-	  const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
-	  await writeFileToDir("images", fname, img);
-	  appended.push(fname);
-	}
+    // Append new images
+    const appended = [];
+    for (const img of files.images || []) {
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
+      await writeFileToDir("images", fname, img);
+      appended.push(fname);
+    }
 
-	// Audio: replace only if provided
-	let audioFile = existing.audioFile || null;
-	if (files.audio) {
-	  // optional: delete old
-	  if (audioFile) await deleteFromDirIfExists("audio", audioFile);
-	  const mediaNo = index.nextMediaNo++;
-	  const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
-	  await writeFileToDir("audio", fname, files.audio);
-	  audioFile = fname;
-	}
+    // Audio
+    let audioFile = existing.audioFile || null;
+    if (files.audio) {
+      // optional: delete old
+      if (audioFile) await deleteFromDirIfExists("audio", audioFile);
+      const mediaNo = index.nextMediaNo++;
+      const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
+      await writeFileToDir("audio", fname, files.audio);
+      audioFile = fname;
+    }
 
-	const finalImageFiles = [...keepNames, ...appended];
+    const finalImageFiles = [...keepNames, ...appended];
 
-	// Update index card
-	const updatedAt = new Date().toISOString();
-	const nextCard = {
-	  ...existing,
-	  word: updatedCard.word,
-	  imageFiles: finalImageFiles,
-	  audioFile,
-	  tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
-	  updatedAt,
-	};
-	index.cards[idx] = nextCard;
-	await writeIndex(index);
+    // Update index card
+    const updatedAt = new Date().toISOString();
+    const nextCard = {
+      ...existing,
+      word: updatedCard.word,
+      imageFiles: finalImageFiles,
+      audioFile,
+      tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
+      updatedAt,
+    };
+    index.cards[idx] = nextCard;
+    await writeIndex(index);
 
-	// Rebuild state card with URLs
-	const imageUrls = [];
-	for (const fname of finalImageFiles) {
-	  const url = await blobUrlFromDirFile("images", fname);
-	  if (url) imageUrls.push(url);
-	}
-	let audioUrl = null;
-	if (audioFile) {
-	  audioUrl = await blobUrlFromDirFile("audio", audioFile);
-	}
+    // Rebuild state card with URLs
+    const imageUrls = [];
+    for (const fname of finalImageFiles) {
+      const url = await blobUrlFromDirFile("images", fname);
+      if (url) imageUrls.push(url);
+    }
+    let audioUrl = null;
+    if (audioFile) {
+      audioUrl = await blobUrlFromDirFile("audio", audioFile);
+    }
 
-	setCards((prev) =>
-	  prev.map((c) =>
-		c.id === updatedCard.id
-		  ? {
-			  id: updatedCard.id,
-			  word: updatedCard.word,
-			  images: imageUrls,
-			  imageFiles: finalImageFiles,
-			  audio: audioUrl,
-			  audioFile,
-			  tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
-			  recordings: Array.isArray(c.recordings) ? c.recordings : [],
-			}
-		  : c
-	  )
-	);
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === updatedCard.id
+          ? {
+              ...c,
+              word: updatedCard.word,
+              images: imageUrls,
+              imageFiles: finalImageFiles,
+              audio: audioUrl,
+              audioFile,
+              tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
+            }
+          : c
+      )
+    );
   };
 
   /* -------------------------
-	 Save pronunciation recording
-	 ------------------------- */
+     Save pronunciation recording
+     ------------------------- */
   async function savePronunciation(cardId, blob, ext = "webm") {
-	if (!directoryHandle || !blob || typeof cardId !== "number") return;
+    if (!directoryHandle || !blob || typeof cardId !== "number") return;
 
-	const stamp = new Date();
-	const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
-	  stamp.getMonth() + 1
-	).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}-${String(
-	  stamp.getHours()
-	).padStart(2, "0")}${String(stamp.getMinutes()).padStart(
-	  2,
-	  "0"
-	)}${String(stamp.getSeconds()).padStart(2, "0")}.${ext}`;
+    const stamp = new Date();
+    const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
+      stamp.getMonth() + 1
+    ).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}-${String(
+      stamp.getHours()
+    ).padStart(2, "0")}${String(stamp.getMinutes()).padStart(
+      2,
+      "0"
+    )}${String(stamp.getSeconds()).padStart(2, "0")}.${ext}`;
 
-	await writeFileToDir("recordings", fileName, blob);
+    await writeFileToDir("recordings", fileName, blob);
 
-	// Append to index card.recordings (newest first)
-	const index = await readIndex();
-	const card = index.cards.find((c) => c.id === cardId);
-	if (card) {
-	  const rec = {
-		file: fileName,
-		ts: stamp.toISOString(),
-		bytes: blob.size || undefined,
-		mime: blob.type || undefined,
-	  };
-	  if (!Array.isArray(card.recordings)) card.recordings = [];
-	  card.recordings.unshift(rec);
-	  card.updatedAt = new Date().toISOString();
-	  await writeIndex(index);
-	}
+    // Append to index card.recordings (newest first)
+    const index = await readIndex();
+    const card = index.cards.find((c) => c.id === cardId);
+    if (card) {
+      const rec = {
+        file: fileName,
+        ts: stamp.toISOString(),
+        bytes: blob.size || undefined,
+        mime: blob.type || undefined,
+      };
+      if (!Array.isArray(card.recordings)) card.recordings = [];
+      card.recordings.unshift(rec);
+      card.updatedAt = new Date().toISOString();
+      await writeIndex(index);
+    }
 
-	// Update state
-	setCards((prev) =>
-	  prev.map((c) =>
-		c.id === cardId
-		  ? {
-			  ...c,
-			  recordings: [{ file: fileName, ts: stamp.toISOString(), bytes: blob.size || undefined, mime: blob.type || undefined }, ...(c.recordings || [])],
-			}
-		  : c
-	  )
-	);
+    // Update state
+    setCards((prev) =>
+      prev.map((c) =>
+        c.id === cardId
+          ? {
+              ...c,
+              recordings: [
+                {
+                  file: fileName,
+                  ts: stamp.toISOString(),
+                  bytes: blob.size || undefined,
+                  mime: blob.type || undefined,
+                },
+                ...(c.recordings || []),
+              ],
+            }
+          : c
+      )
+    );
   }
 
   /* -------------------------
-	 Folder select UI (unchanged)
-	 ------------------------- */
+     Skill helpers
+     ------------------------- */
+
+  const visibleCards = useMemo(() => {
+    if (!activeSkillId) return cards;
+    const skill = skills.find((s) => s.id === activeSkillId);
+    if (!skill || !Array.isArray(skill.cardIds) || skill.cardIds.length === 0) {
+      return cards;
+    }
+    const idSet = new Set(skill.cardIds);
+    return cards.filter((c) => idSet.has(c.id));
+  }, [activeSkillId, skills, cards]);
+
+  const enterStudyForSkill = (skillId) => {
+    setActiveSkillId(skillId);
+    setScreen("study");
+    setMenuOpen(false);
+  };
+
+  const enterReviewForSkill = (skillId) => {
+    setActiveSkillId(skillId);
+    setScreen("review");
+    setMenuOpen(false);
+  };
+
+  const handleEditSkillSlot = (slotIndex) => {
+    const current = skills.find((s) => s.order === slotIndex) || null;
+    setEditingSkillId(current ? current.id : null);
+    setEditingSkillSlot(slotIndex);
+    setScreen("skillEdit");
+    setMenuOpen(false);
+  };
+
+  const handleAddTreeRow = async () => {
+    if (!directoryHandle) return;
+    const index = await readIndex();
+    const nextRows =
+      (typeof index.treeRows === "number" ? index.treeRows : treeRows) + 1;
+    index.treeRows = nextRows;
+    await writeIndex(index);
+    setTreeRows(nextRows);
+  };
+
+  const handleSaveSkill = async (skillPayload) => {
+    if (!directoryHandle) return;
+    const index = await readIndex();
+
+    let skillsArr = Array.isArray(index.skills) ? index.skills.slice() : [];
+    let skillId = skillPayload.id;
+
+    if (!skillId) {
+      skillId = index.nextSkillNo || 1;
+      index.nextSkillNo = skillId + 1;
+    }
+
+    const existingIdx = skillsArr.findIndex((s) => s.id === skillId);
+    const skillRecord = {
+      id: skillId,
+      name: skillPayload.name || "",
+      cardIds: Array.isArray(skillPayload.cardIds)
+        ? skillPayload.cardIds.slice()
+        : [],
+      order:
+        typeof skillPayload.order === "number"
+          ? skillPayload.order
+          : editingSkillSlot ?? 0,
+      createdAt:
+        existingIdx === -1 && skillPayload.createdAt
+          ? skillPayload.createdAt
+          : existingIdx === -1
+          ? new Date().toISOString()
+          : skillsArr[existingIdx].createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existingIdx === -1) {
+      skillsArr.push(skillRecord);
+    } else {
+      skillsArr[existingIdx] = skillRecord;
+    }
+
+    index.skills = skillsArr;
+    await writeIndex(index);
+
+    setSkills(skillsArr);
+    setEditingSkillId(null);
+    setEditingSkillSlot(null);
+    setScreen("tree");
+  };
+
+  /* -------------------------
+     Folder select UI
+     ------------------------- */
   if (!folderReady) {
-	return (
-	  <div className="app-root">
-		<header className="app-header">
-		  <button
-			className="app-menu-button"
-			onClick={() => setMenuOpen((p) => !p)}
-		  >
-			☰
-		  </button>
-		  <h1 className="app-title">Flashcards</h1>
-		</header>
+    return (
+      <div className="app-root">
+        <header className="app-header">
+          <button
+            className="app-menu-button"
+            onClick={() => setMenuOpen((p) => !p)}
+          >
+            ☰
+          </button>
+          <h1 className="app-title">Flashcards</h1>
+        </header>
 
-		<main className="app-main">
-		  <div className="app-picker">
-			<p>No folder selected. Please choose a folder to store your flashcards:</p>
+        <main className="app-main">
+          <div className="app-picker">
+            <p>
+              No folder selected. Please choose a folder to store your
+              flashcards:
+            </p>
 
-			{!needsReconnect && (
-			  <button
-				className="app-action"
-				onClick={async () => {
-				  const handle = await pickDirectory();
-				  if (handle) {
-					const { cardsState } = await loadCardsForState();
-					setCards(cardsState);
-					setFolderReady(true);
-				  }
-				}}
-			  >
-				Select Folder
-			  </button>
-			)}
+            {!needsReconnect && (
+              <button
+                className="app-action"
+                onClick={async () => {
+                  const handle = await pickDirectory();
+                  if (handle) {
+                    const { index, cardsState } = await loadCardsForState();
+                    setCards(cardsState);
+                    setSkills(
+                      Array.isArray(index.skills) ? index.skills : []
+                    );
+                    setTreeRows(
+                      typeof index.treeRows === "number" &&
+                        index.treeRows > 0
+                        ? index.treeRows
+                        : 2
+                    );
+                    setFolderReady(true);
+                  }
+                }}
+              >
+                Select Folder
+              </button>
+            )}
 
-			{needsReconnect && (
-			  <button
-				className="app-action"
-				onClick={async () => {
-				  if (!restorableHandle) return;
-				  const status = await restorableHandle.requestPermission({ mode: "readwrite" });
-				  if (status === "granted") {
-					directoryHandle = restorableHandle;
-					const { cardsState } = await loadCardsForState();
-					setCards(cardsState);
-					setFolderReady(true);
-					setNeedsReconnect(false);
-				  }
-				}}
-			  >
-				Reconnect storage
-			  </button>
-			)}
-		  </div>
-		</main>
-	  </div>
-	);
+            {needsReconnect && (
+              <button
+                className="app-action"
+                onClick={async () => {
+                  if (!restorableHandle) return;
+                  const status = await restorableHandle.requestPermission({
+                    mode: "readwrite",
+                  });
+                  if (status === "granted") {
+                    directoryHandle = restorableHandle;
+                    const { index, cardsState } = await loadCardsForState();
+                    setCards(cardsState);
+                    setSkills(
+                      Array.isArray(index.skills) ? index.skills : []
+                    );
+                    setTreeRows(
+                      typeof index.treeRows === "number" &&
+                        index.treeRows > 0
+                        ? index.treeRows
+                        : 2
+                    );
+                    setFolderReady(true);
+                    setNeedsReconnect(false);
+                  }
+                }}
+              >
+                Reconnect storage
+              </button>
+            )}
+          </div>
+        </main>
+      </div>
+    );
   }
 
   /* -------------------------
-	 Screens
-	 ------------------------- */
-  let content = null;
+     Main screen switch
+     ------------------------- */
+  let content;
   if (screen === "review") {
-	content = (
-	  <ReviewScreen
-		cards={cards}
-		micEnabled={options.micEnabled}
-		onSaveRecording={savePronunciation}
-	  />
-	);
-  } else if (screen === "cards") {
-	content = (
-	  <CardsScreen
-		cards={cards}
-		onAddCard={handleAddCard}
-		onSaveCard={handleSaveCard}
-	  />
-	);
-  } else if (screen === "options") {
-	content = (
-	  <OptionsScreen
-		micEnabled={options.micEnabled}
-		onChangeMic={(v) => setOptions((prev) => ({ ...prev, micEnabled: v }))}
-	  />
-	);
+    content = (
+      <ReviewScreen
+        cards={visibleCards}
+        micEnabled={options.micEnabled}
+        onSaveRecording={savePronunciation}
+      />
+    );
   } else if (screen === "study") {
-	content = (
-	  <StudyScreen
-		cards={cards}
-		micEnabled={options.micEnabled}
-		onSaveRecording={savePronunciation}
-	  />
-	);
+    content = (
+      <StudyScreen
+        cards={visibleCards}
+        micEnabled={options.micEnabled}
+        onSaveRecording={savePronunciation}
+      />
+    );
+  } else if (screen === "cards") {
+    content = (
+      <CardsScreen
+        cards={cards}
+        onAddCard={handleAddCard}
+        onSaveCard={handleSaveCard}
+      />
+    );
+  } else if (screen === "options") {
+    content = (
+      <OptionsScreen
+        micEnabled={options.micEnabled}
+        onChangeMic={(v) =>
+          setOptions((prev) => ({ ...prev, micEnabled: v }))
+        }
+      />
+    );
+  } else if (screen === "tree") {
+    content = (
+      <TreeScreen
+        skills={skills}
+        treeRows={treeRows}
+        onEnterStudy={enterStudyForSkill}
+        onEnterReview={enterReviewForSkill}
+        onEditSlot={handleEditSkillSlot}
+        onAddRow={handleAddTreeRow}
+      />
+    );
+  } else if (screen === "skillEdit") {
+    const existingSkill =
+      editingSkillId != null
+        ? skills.find((s) => s.id === editingSkillId) || null
+        : null;
+    content = (
+      <SkillEditScreen
+        skill={existingSkill}
+        slotIndex={editingSkillSlot}
+        cards={cards}
+        onSave={handleSaveSkill}
+        onCancel={() => {
+          setEditingSkillId(null);
+          setEditingSkillSlot(null);
+          setScreen("tree");
+        }}
+      />
+    );
   }
 
   return (
-	<div className="app-root">
-	  <header className="app-header">
-		<button
-		  className="app-menu-button"
-		  onClick={() => setMenuOpen((prev) => !prev)}
-		>
-		  ☰
-		</button>
-		<h1 className="app-title">Flashcards</h1>
-	  </header>
+    <div className="app-root">
+      <header className="app-header">
+        <button
+          className="app-menu-button"
+          onClick={() => setMenuOpen((prev) => !prev)}
+        >
+          ☰
+        </button>
+        <h1 className="app-title">Flashcards</h1>
+      </header>
 
-	  {menuOpen && <div className="app-backdrop" onClick={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <div className="app-backdrop" onClick={() => setMenuOpen(false)} />
+      )}
 
-	  <nav className={`app-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
-		<ul className="app-menu-list">
-		  <li><button className="app-menu-item" onClick={() => navigate("review")}>Review</button></li>
-		  <li><button className="app-menu-item" onClick={() => navigate("study")}>Study</button></li>
-		  <li><button className="app-menu-item" onClick={() => navigate("cards")}>Cards</button></li>
-		  <li><button className="app-menu-item" onClick={() => navigate("options")}>Options</button></li>
-		</ul>
-	  </nav>
+      <nav
+        className={`app-menu ${menuOpen ? "open" : ""}`}
+        aria-hidden={!menuOpen}
+      >
+        <ul className="app-menu-list">
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("review")}
+            >
+              Review
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("study")}
+            >
+              Study
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("cards")}
+            >
+              Cards
+            </button>
+          </li>
+          <li>
+            <button className="app-menu-item" onClick={() => navigate("tree")}>
+              Tree
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("options")}
+            >
+              Options
+            </button>
+          </li>
+        </ul>
+      </nav>
 
-	  <main className="app-main">{content}</main>
-	</div>
+      <main className="app-main">{content}</main>
+    </div>
   );
 }
 
