@@ -5,182 +5,21 @@ import OptionsScreen from "./screens/OptionsScreen.jsx";
 import StudyScreen from "./screens/StudyScreen.jsx";
 import TreeScreen from "./screens/TreeScreen.jsx";
 import SkillEditScreen from "./screens/SkillEditScreen.jsx";
-import { openDB } from "idb";
+import {
+  getSavedDirectoryHandle,
+  saveDirectoryHandle,
+  setDirectoryHandle,
+  getDirectoryHandle,
+  pad6,
+  sanitizeName,
+  writeFileToDir,
+  deleteFromDirIfExists,
+  blobUrlFromDirFile,
+  readIndex,
+  writeIndex,
+  loadCardsForState,
+} from "./utils/fsHelpers.js";
 import "./App.scss";
-
-let directoryHandle = null;
-
-/* =========================
-   IDB: persist FS handle
-   ========================= */
-async function getDB() {
-  return await openDB("flashcards", 2, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains("handles")) {
-        db.createObjectStore("handles");
-      }
-    },
-  });
-}
-
-async function saveDirectoryHandle(handle) {
-  const db = await getDB();
-  await db.put("handles", handle, "directory");
-}
-
-async function getSavedDirectoryHandle() {
-  const db = await getDB();
-  return await db.get("handles", "directory");
-}
-
-/* =========================
-   Small helpers
-   ========================= */
-function pad6(n) {
-  const s = String(Math.max(0, Number(n) | 0));
-  return s.padStart(6, "0");
-}
-
-function sanitizeName(name) {
-  const base = (name || "").split("/").pop().split("\\").pop();
-  const trimmed = base.trim().replace(/\s+/g, " ");
-  const safe = trimmed.replace(/[^\w.\- +]/g, "-");
-  return safe.slice(0, 80);
-}
-
-/* =========================
-   FS helpers
-   ========================= */
-async function getOrCreateDir(name) {
-  return await directoryHandle.getDirectoryHandle(name, { create: true });
-}
-
-async function getDir(name) {
-  try {
-    return await directoryHandle.getDirectoryHandle(name, { create: false });
-  } catch {
-    return null;
-  }
-}
-
-async function writeFileToDir(dirName, targetFilename, srcFileOrBlob) {
-  const dir = await getOrCreateDir(dirName);
-  const fileHandle = await dir.getFileHandle(targetFilename, { create: true });
-  const writable = await fileHandle.createWritable();
-  if ("arrayBuffer" in srcFileOrBlob) {
-    await writable.write(await srcFileOrBlob.arrayBuffer());
-  } else {
-    await writable.write(srcFileOrBlob);
-  }
-  await writable.close();
-  return fileHandle;
-}
-
-async function deleteFromDirIfExists(dirName, filename) {
-  try {
-    const dir = await getOrCreateDir(dirName);
-    await dir.removeEntry(filename);
-  } catch {
-    // ignore missing
-  }
-}
-
-async function blobUrlFromDirFile(dirName, filename) {
-  const dir = await getDir(dirName);
-  if (!dir) return null;
-  try {
-    const fh = await dir.getFileHandle(filename);
-    const f = await fh.getFile();
-    return URL.createObjectURL(f);
-  } catch {
-    return null;
-  }
-}
-
-/* =========================
-   cards.json (atomic)
-   ========================= */
-async function readIndex() {
-  try {
-    const fh = await directoryHandle.getFileHandle("cards.json", {
-      create: false,
-    });
-    const file = await fh.getFile();
-    const text = await file.text();
-    const obj = JSON.parse(text);
-
-    if (!obj || typeof obj !== "object") {
-      throw new Error("bad index");
-    }
-
-    // normalize core fields
-    if (!Array.isArray(obj.cards)) obj.cards = [];
-    if (typeof obj.nextCardNo !== "number") obj.nextCardNo = 1;
-    if (typeof obj.nextMediaNo !== "number") obj.nextMediaNo = 1;
-
-    // normalize skill-tree fields
-    if (!Array.isArray(obj.skills)) obj.skills = [];
-    if (typeof obj.treeRows !== "number" || obj.treeRows < 1) obj.treeRows = 2;
-    if (typeof obj.nextSkillNo !== "number" || obj.nextSkillNo < 1) {
-      obj.nextSkillNo = 1;
-    }
-
-    return obj;
-  } catch {
-    // default index if cards.json doesn't exist or is invalid
-    return {
-      updatedAt: new Date().toISOString(),
-      nextCardNo: 1,
-      nextMediaNo: 1,
-      cards: [],
-      skills: [],
-      treeRows: 2,
-      nextSkillNo: 1,
-    };
-  }
-}
-
-async function writeIndex(indexObj) {
-  indexObj.updatedAt = new Date().toISOString();
-  const json = JSON.stringify(indexObj, null, 2);
-  const fh = await directoryHandle.getFileHandle("cards.json", {
-    create: true,
-  });
-  const writable = await fh.createWritable();
-  await writable.write(json);
-  await writable.close();
-}
-
-/* =========================
-   Load cards into state
-   ========================= */
-async function loadCardsForState() {
-  const index = await readIndex();
-
-  const cardsState = [];
-  for (const c of index.cards) {
-    const imageUrls = [];
-    for (const fname of c.imageFiles || []) {
-      const url = await blobUrlFromDirFile("images", fname);
-      if (url) imageUrls.push(url);
-    }
-    let audioUrl = null;
-    if (c.audioFile) {
-      audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
-    }
-    cardsState.push({
-      id: c.id,
-      word: c.word,
-      images: imageUrls,
-      imageFiles: c.imageFiles || [],
-      audio: audioUrl,
-      audioFile: c.audioFile || null,
-      tags: Array.isArray(c.tags) ? c.tags : [],
-      recordings: Array.isArray(c.recordings) ? c.recordings : [],
-    });
-  }
-  return { index, cardsState };
-}
 
 /* =========================
    App
@@ -201,7 +40,6 @@ function App() {
   const [editingSkillSlot, setEditingSkillSlot] = useState(null);
   const [treeEditMode, setTreeEditMode] = useState(false);
 
-
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
     const stored = localStorage.getItem("options");
@@ -220,7 +58,7 @@ function App() {
 
       const perm = await saved.queryPermission({ mode: "readwrite" });
       if (perm === "granted") {
-        directoryHandle = saved;
+        setDirectoryHandle(saved);
         const { index, cardsState } = await loadCardsForState();
         setCards(cardsState);
         setSkills(Array.isArray(index.skills) ? index.skills : []);
@@ -239,9 +77,9 @@ function App() {
 
   const navigate = (target) => {
     setMenuOpen(false);
-	if (target !== "tree") {
-		setTreeEditMode(false);
-	}
+    if (target !== "tree") {
+      setTreeEditMode(false);
+    }
     setScreen(target);
     if (target === "review" || target === "study") {
       setActiveSkillId(null);
@@ -258,7 +96,7 @@ function App() {
         /* ignore */
       }
     }
-    directoryHandle = handle;
+    setDirectoryHandle(handle);
     return handle;
   }
 
@@ -266,7 +104,7 @@ function App() {
      Add Card
      ------------------------- */
   const handleAddCard = async (newCard, files) => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
 
     const index = await readIndex();
     const id = index.nextCardNo++;
@@ -331,7 +169,7 @@ function App() {
      Save Card (edit)
      ------------------------- */
   const handleSaveCard = async (updatedCard, files) => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
     const index = await readIndex();
 
     const idx = index.cards.findIndex((c) => c.id === updatedCard.id);
@@ -410,7 +248,7 @@ function App() {
      Save pronunciation recording
      ------------------------- */
   async function savePronunciation(cardId, blob, ext = "webm") {
-    if (!directoryHandle || !blob || typeof cardId !== "number") return;
+    if (!getDirectoryHandle() || !blob || typeof cardId !== "number") return;
 
     const stamp = new Date();
     const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
@@ -466,11 +304,19 @@ function App() {
      Skill helpers
      ------------------------- */
   const visibleCards = useMemo(() => {
+    // No skill selected → global deck
     if (!activeSkillId) return cards;
+
     const skill = skills.find((s) => s.id === activeSkillId);
-    if (!skill || !Array.isArray(skill.cardIds) || skill.cardIds.length === 0) {
-      return cards;
+
+    // Skill id is stale / missing → fall back to global
+    if (!skill) return cards;
+
+    // Skill exists but has no cards → show nothing
+    if (!Array.isArray(skill.cardIds) || skill.cardIds.length === 0) {
+      return [];
     }
+
     const idSet = new Set(skill.cardIds);
     return cards.filter((c) => idSet.has(c.id));
   }, [activeSkillId, skills, cards]);
@@ -496,7 +342,7 @@ function App() {
   };
 
   const handleAddTreeRow = async () => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
     const index = await readIndex();
     const currentRows =
       typeof index.treeRows === "number" && index.treeRows > 0
@@ -509,7 +355,7 @@ function App() {
   };
 
   const handleSaveSkill = async (name, cardIds) => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
     const index = await readIndex();
 
     let skillsArr = Array.isArray(index.skills) ? index.skills.slice() : [];
@@ -605,31 +451,31 @@ function App() {
   if (!folderReady) {
     return (
       <div className="app-root">
-		<header className="app-header">
-			<button
-			className="app-menu-button"
-			onClick={() => setMenuOpen((prev) => !prev)}
-			>
-			☰
-			</button>
+        <header className="app-header">
+          <button
+            className="app-menu-button"
+            onClick={() => setMenuOpen((prev) => !prev)}
+          >
+            ☰
+          </button>
 
-			<h1 className="app-title">{modeTitle}</h1>
+          <h1 className="app-title">{modeTitle}</h1>
 
-			<div className="app-header-right">
-			{screen === "tree" && (
-				<button
-				className="app-header-action"
-				onClick={() => setTreeEditMode((prev) => !prev)}
-				aria-pressed={treeEditMode}
-				aria-label={
-					treeEditMode ? "Finish editing tree" : "Edit tree"
-				}
-				>
-				{treeEditMode ? "✅" : "✏️"}
-				</button>
-			)}
-			</div>
-		</header>
+          <div className="app-header-right">
+            {screen === "tree" && (
+              <button
+                className="app-header-action"
+                onClick={() => setTreeEditMode((prev) => !prev)}
+                aria-pressed={treeEditMode}
+                aria-label={
+                  treeEditMode ? "Finish editing tree" : "Edit tree"
+                }
+              >
+                {treeEditMode ? "✅" : "✏️"}
+              </button>
+            )}
+          </div>
+        </header>
 
         <main className="app-main">
           <div className="app-picker">
@@ -644,6 +490,7 @@ function App() {
                 onClick={async () => {
                   const handle = await pickDirectory();
                   if (handle) {
+                    setDirectoryHandle(handle);
                     const { index, cardsState } = await loadCardsForState();
                     setCards(cardsState);
                     setSkills(
@@ -672,7 +519,7 @@ function App() {
                     mode: "readwrite",
                   });
                   if (status === "granted") {
-                    directoryHandle = restorableHandle;
+                    setDirectoryHandle(restorableHandle);
                     const { index, cardsState } = await loadCardsForState();
                     setCards(cardsState);
                     setSkills(
