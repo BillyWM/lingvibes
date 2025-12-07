@@ -199,6 +199,8 @@ function App() {
   const [activeSkillId, setActiveSkillId] = useState(null);
   const [editingSkillId, setEditingSkillId] = useState(null);
   const [editingSkillSlot, setEditingSkillSlot] = useState(null);
+  const [treeEditMode, setTreeEditMode] = useState(false);
+
 
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
@@ -237,6 +239,9 @@ function App() {
 
   const navigate = (target) => {
     setMenuOpen(false);
+	if (target !== "tree") {
+		setTreeEditMode(false);
+	}
     setScreen(target);
     if (target === "review" || target === "study") {
       setActiveSkillId(null);
@@ -600,15 +605,31 @@ function App() {
   if (!folderReady) {
     return (
       <div className="app-root">
-        <header className="app-header">
-          <button
-            className="app-menu-button"
-            onClick={() => setMenuOpen((p) => !p)}
-          >
-            ☰
-          </button>
-          <h1 className="app-title">{modeTitle}</h1>
-        </header>
+		<header className="app-header">
+			<button
+			className="app-menu-button"
+			onClick={() => setMenuOpen((prev) => !prev)}
+			>
+			☰
+			</button>
+
+			<h1 className="app-title">{modeTitle}</h1>
+
+			<div className="app-header-right">
+			{screen === "tree" && (
+				<button
+				className="app-header-action"
+				onClick={() => setTreeEditMode((prev) => !prev)}
+				aria-pressed={treeEditMode}
+				aria-label={
+					treeEditMode ? "Finish editing tree" : "Edit tree"
+				}
+				>
+				{treeEditMode ? "✅" : "✏️"}
+				</button>
+			)}
+			</div>
+		</header>
 
         <main className="app-main">
           <div className="app-picker">
@@ -719,6 +740,7 @@ function App() {
       <TreeScreen
         skills={skills}
         treeRows={treeRows}
+        editMode={treeEditMode}
         onEnterStudy={enterStudyForSkill}
         onEnterReview={enterReviewForSkill}
         onEditSlot={handleEditSkillSlot}
@@ -754,7 +776,23 @@ function App() {
         >
           ☰
         </button>
+
         <h1 className="app-title">{modeTitle}</h1>
+
+        <div className="app-header-right">
+          {screen === "tree" && (
+            <button
+              className="app-header-action"
+              onClick={() => setTreeEditMode((prev) => !prev)}
+              aria-pressed={treeEditMode}
+              aria-label={
+                treeEditMode ? "Finish editing tree" : "Edit tree"
+              }
+            >
+              {treeEditMode ? "✅" : "✏️"}
+            </button>
+          )}
+        </div>
       </header>
 
       {menuOpen && (
@@ -791,7 +829,10 @@ function App() {
             </button>
           </li>
           <li>
-            <button className="app-menu-item" onClick={() => navigate("tree")}>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("tree")}
+            >
               Tree
             </button>
           </li>

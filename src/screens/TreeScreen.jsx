@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import "../styles/TreeScreen.scss";
 
 function TreeScreen({
   skills,
   treeRows,
+  editMode,
   onEnterStudy,
   onEnterReview,
   onEditSlot,
   onAddRow,
 }) {
-  const [editMode, setEditMode] = useState(false);
+
 
   const slots = useMemo(() => {
     const byOrder = new Map();
@@ -84,16 +85,6 @@ function TreeScreen({
 
   return (
     <div className="tree-root">
-      <div className="tree-toolbar">
-        <button
-          type="button"
-          className="tree-edit-button"
-          onClick={() => setEditMode((prev) => !prev)}
-        >
-          {editMode ? "Done" : "Edit"}
-        </button>
-      </div>
-
       <div className="tree-grid">{rows}</div>
 
       {editMode && (
