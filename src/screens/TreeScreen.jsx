@@ -54,31 +54,70 @@ function TreeScreen({
     const rowSlots = slots.slice(start, start + 3);
     rows.push(
       <div className="tree-row" key={r}>
-        {rowSlots.map(({ index, skill }) => (
-          <div className="tree-slot" key={index}>
-            <div
-              className={
-                "tree-circle " +
-                (skill ? "tree-circle--filled" : "tree-circle--empty")
-              }
-            >
+        {rowSlots.map(({ index, skill }) => {
+          const hasSkill = !!skill;
+
+          // If there's no skill in this slot and we're NOT in edit mode,
+          // don't show an empty circle – just an invisible spacer.
+          if (!hasSkill && !editMode) {
+            return <div className="tree-slot" key={index} />;
+          }
+
+          const circleClass = hasSkill
+            ? "tree-circle tree-circle--filled"
+            : "tree-circle tree-circle--empty";
+
+          return (
+            <div className="tree-slot" key={index}>
               <div
-                className="tree-circle-half tree-circle-half--left"
-                onClick={() => handleCircleClick(index, skill, "left")}
-              />
-              <div
-                className="tree-circle-half tree-circle-half--right"
-                onClick={() => handleCircleClick(index, skill, "right")}
-              />
-              <div className="tree-circle-divider" />
-              {skill && (
-                <div className="tree-circle-label">
-                  {skill.name || "Untitled"}
-                </div>
-              )}
+                className={circleClass}
+                // In edit mode, clicking an empty circle should open the slot editor
+                onClick={
+                  !hasSkill && editMode
+                    ? () => onEditSlot(index)
+                    : undefined
+                }
+              >
+                {/* divider + label only when there is a skill */}
+                {hasSkill && <div className="tree-circle-divider" />}
+
+                {hasSkill && (
+                  <div className="tree-circle-label">
+                    {skill.name}
+                  </div>
+                )}
+
+                {/* left/right halves only matter when a skill exists */}
+                {hasSkill && (
+                  <>
+                    <div
+                      className="tree-circle-half tree-circle-half--left"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (editMode) {
+                          onEditSlot(index);
+                        } else {
+                          onEnterStudy(skill.id);
+                        }
+                      }}
+                    />
+                    <div
+                      className="tree-circle-half tree-circle-half--right"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (editMode) {
+                          onEditSlot(index);
+                        } else {
+                          onEnterReview(skill.id);
+                        }
+                      }}
+                    />
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
