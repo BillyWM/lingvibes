@@ -43,7 +43,17 @@ function App() {
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
     const stored = localStorage.getItem("options");
-    return stored ? JSON.parse(stored) : { micEnabled: false };
+    const base = stored ? JSON.parse(stored) : {};
+
+    // default values for new fields
+    return {
+      micEnabled: false,
+      elevenApiKey: "",
+      elevenVoiceUk: "",
+      elevenVoiceEs: "",
+      elevenVoiceZh: "",
+      ...base,
+    };
   });
 
   useEffect(() => {
@@ -576,9 +586,9 @@ function App() {
   } else if (screen === "options") {
     content = (
       <OptionsScreen
-        micEnabled={options.micEnabled}
-        onChangeMic={(v) =>
-          setOptions((prev) => ({ ...prev, micEnabled: v }))
+        options={options}
+        onChangeOptions={(update) =>
+          setOptions((prev) => ({ ...prev, ...update }))
         }
       />
     );

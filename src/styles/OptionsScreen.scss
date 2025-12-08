@@ -60,3 +60,68 @@
   color: #4b5563;
   font-size: 0.95rem;
 }
+
+.options-section {
+  margin-top: 24px;
+}
+
+.options-subtitle {
+  font-size: 1.1rem;
+  margin: 0 0 8px 0;
+}
+
+.options-text-input {
+  padding: 8px 10px;
+  font-size: 1rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  min-width: 180px;
+}
+
+.options-eleven-row {
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.options-eleven-lang {
+  min-width: 90px;
+  font-size: 0.95rem;
+}
+
+.options-eleven-input {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+.options-eleven-test {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  background: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.options-eleven-test:hover,
+.options-eleven-test:focus {
+  background: #d0d0d0;
+}
+
+.options-eleven-error {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #ffe5e5;
+  color: #a00000;
+  font-size: 0.9rem;
+}
+
