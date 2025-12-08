@@ -55,16 +55,13 @@
 .flash-images {
   display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
   gap: 0.6rem;
-  min-height: 40vh;
 }
 
 .flash-image {
-  max-width: min(40%, 240px);
-  max-height: 40vh;
+  max-width: 100%;
   border-radius: 8px;
   object-fit: contain;
   -webkit-user-drag: none;

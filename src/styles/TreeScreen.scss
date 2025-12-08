@@ -1,0 +1,120 @@
+.tree-root {
+  padding: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* center everything in the tree area */
+}
+
+.tree-toolbar {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  justify-content: flex-end; /* keep Edit off to the right */
+  margin-bottom: 20px;
+}
+
+.tree-edit-button {
+  padding: 8px 14px;
+  border-radius: 9999px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  background-color: #e0e0e0;
+}
+
+.tree-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center; /* rows centered under the toolbar */
+}
+
+.tree-row {
+  display: flex;
+  gap: 24px;
+}
+
+.tree-slot {
+  width: 96px;
+  height: 96px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.tree-circle {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-circle--filled {
+  border: 3px solid #444;
+  background: #fafafa;
+}
+
+.tree-circle--empty {
+  border: 2px dashed #ccc;
+  background: transparent;
+}
+
+.tree-circle-divider {
+  position: absolute;
+  width: 2px;
+  height: 80%;
+  background: #aaa;
+  left: 50%;
+  top: 10%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.tree-circle-half {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  cursor: pointer;
+  pointer-events: auto; /* ensure these actually receive clicks */
+}
+
+.tree-circle-half--left {
+  left: 0;
+}
+
+.tree-circle-half--right {
+  right: 0;
+}
+
+.tree-circle-label {
+  position: relative;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.2;
+  max-width: 80%;
+  word-wrap: break-word;
+  pointer-events: none;
+}
+
+.tree-footer {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.tree-add-row-button {
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  background-color: #e0e0e0;
+}

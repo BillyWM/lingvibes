@@ -1,156 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import ReviewScreen from "./screens/ReviewScreen.jsx";
 import CardsScreen from "./screens/CardsScreen.jsx";
 import OptionsScreen from "./screens/OptionsScreen.jsx";
 import StudyScreen from "./screens/StudyScreen.jsx";
-import { openDB } from "idb";
+import TreeScreen from "./screens/TreeScreen.jsx";
+import SkillEditScreen from "./screens/SkillEditScreen.jsx";
+import {
+  getSavedDirectoryHandle,
+  saveDirectoryHandle,
+  setDirectoryHandle,
+  getDirectoryHandle,
+  pad6,
+  sanitizeName,
+  writeFileToDir,
+  deleteFromDirIfExists,
+  blobUrlFromDirFile,
+  readIndex,
+  writeIndex,
+  loadCardsForState,
+} from "./utils/fsHelpers.js";
 import "./App.scss";
-
-let directoryHandle = null;
-
-/* =========================
-   IDB: persist FS handle
-   ========================= */
-async function getDB() {
-  return await openDB("flashcards", 2, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains("handles")) {
-        db.createObjectStore("handles");
-      }
-    },
-  });
-}
-
-async function saveDirectoryHandle(handle) {
-  const db = await getDB();
-  await db.put("handles", handle, "directory");
-}
-
-async function getSavedDirectoryHandle() {
-  const db = await getDB();
-  return await db.get("handles", "directory");
-}
-
-/* =========================
-   Small helpers
-   ========================= */
-function pad6(n) {
-  const s = String(Math.max(0, Number(n) | 0));
-  return s.padStart(6, "0");
-}
-
-function sanitizeName(name) {
-  const base = (name || "").split("/").pop().split("\\").pop();
-  const trimmed = base.trim().replace(/\s+/g, " ");
-  const safe = trimmed.replace(/[^\w.\- +]/g, "-");
-  return safe.slice(0, 80);
-}
-
-async function getOrCreateDir(name) {
-  return await directoryHandle.getDirectoryHandle(name, { create: true });
-}
-
-async function getDir(name) {
-  try {
-    return await directoryHandle.getDirectoryHandle(name, { create: false });
-  } catch {
-    return null;
-  }
-}
-
-async function writeFileToDir(dirName, targetFilename, srcFileOrBlob) {
-  const dir = await getOrCreateDir(dirName);
-  const fileHandle = await dir.getFileHandle(targetFilename, { create: true });
-  const writable = await fileHandle.createWritable();
-  if ("arrayBuffer" in srcFileOrBlob) {
-    await writable.write(await srcFileOrBlob.arrayBuffer());
-  } else {
-    await writable.write(srcFileOrBlob);
-  }
-  await writable.close();
-  return fileHandle;
-}
-
-async function deleteFromDirIfExists(dirName, filename) {
-  try {
-    const dir = await getOrCreateDir(dirName);
-    await dir.removeEntry(filename);
-  } catch {
-    // ignore missing
-  }
-}
-
-async function blobUrlFromDirFile(dirName, filename) {
-  const dir = await getDir(dirName);
-  if (!dir) return null;
-  try {
-    const fh = await dir.getFileHandle(filename);
-    const f = await fh.getFile();
-    return URL.createObjectURL(f);
-  } catch {
-    return null;
-  }
-}
-
-/* =========================
-   cards.json (atomic)
-   ========================= */
-async function readIndex() {
-  try {
-    const fh = await directoryHandle.getFileHandle("cards.json", { create: false });
-    const file = await fh.getFile();
-    const text = await file.text();
-    const obj = JSON.parse(text);
-    // normalize minimal fields
-    if (!obj || typeof obj !== "object") throw new Error("bad index");
-    if (!Array.isArray(obj.cards)) obj.cards = [];
-    if (typeof obj.nextCardNo !== "number") obj.nextCardNo = 1;
-    if (typeof obj.nextMediaNo !== "number") obj.nextMediaNo = 1;
-    return obj;
-  } catch {
-    return { updatedAt: new Date().toISOString(), nextCardNo: 1, nextMediaNo: 1, cards: [] };
-  }
-}
-
-async function writeIndex(indexObj) {
-  indexObj.updatedAt = new Date().toISOString();
-  const json = JSON.stringify(indexObj, null, 2);
-  const fh = await directoryHandle.getFileHandle("cards.json", { create: true });
-  const writable = await fh.createWritable(); // atomic commit on close
-  await writable.write(json);
-  await writable.close();
-}
-
-/* =========================
-   Load cards into state
-   ========================= */
-async function loadCardsForState() {
-  const index = await readIndex();
-
-  const cardsState = [];
-  for (const c of index.cards) {
-    const imageUrls = [];
-    for (const fname of c.imageFiles || []) {
-      const url = await blobUrlFromDirFile("images", fname);
-      if (url) imageUrls.push(url);
-    }
-    let audioUrl = null;
-    if (c.audioFile) {
-      audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
-    }
-    cardsState.push({
-      id: c.id,
-      word: c.word,
-      images: imageUrls,          // blob URLs for UI
-      imageFiles: c.imageFiles || [], // filenames on disk
-      audio: audioUrl,            // blob URL
-      audioFile: c.audioFile || null, // filename on disk
-      tags: Array.isArray(c.tags) ? c.tags : [],
-      recordings: Array.isArray(c.recordings) ? c.recordings : [],
-    });
-  }
-  return { index, cardsState };
-}
 
 /* =========================
    App
@@ -163,11 +32,56 @@ function App() {
   const [needsReconnect, setNeedsReconnect] = useState(false);
   const [restorableHandle, setRestorableHandle] = useState(null);
 
+  // skill tree
+  const [skills, setSkills] = useState([]);
+  const [treeRows, setTreeRows] = useState(2);
+  const [activeSkillId, setActiveSkillId] = useState(null);
+  const [editingSkillId, setEditingSkillId] = useState(null);
+  const [editingSkillSlot, setEditingSkillSlot] = useState(null);
+  const [treeEditMode, setTreeEditMode] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState("uk");
+
+
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
     const stored = localStorage.getItem("options");
-    return stored ? JSON.parse(stored) : { micEnabled: false };
+    const base = stored ? JSON.parse(stored) : {};
+
+    // default values for new fields
+    return {
+      micEnabled: false,
+      elevenApiKey: "",
+      elevenVoiceUk: "",
+      elevenVoiceEs: "",
+      elevenVoiceZh: "",
+      ...base,
+    };
   });
+
+  const languageCards = useMemo(
+    () =>
+      cards.filter((c) => {
+        const lang = c.lang || "uk";
+        return lang === currentLanguage;
+      }),
+    [cards, currentLanguage]
+  );
+
+  const languageSkills = useMemo(
+    () =>
+      skills.filter((s) => {
+        const lang = s.lang || "uk";
+        return lang === currentLanguage;
+      }),
+    [skills, currentLanguage]
+  );
+
+  // When switching languages, drop any active skill selection
+  useEffect(() => {
+    setActiveSkillId(null);
+  }, [currentLanguage]);
+
+
   useEffect(() => {
     localStorage.setItem("options", JSON.stringify(options));
   }, [options]);
@@ -180,9 +94,15 @@ function App() {
 
       const perm = await saved.queryPermission({ mode: "readwrite" });
       if (perm === "granted") {
-        directoryHandle = saved;
-        const { cardsState } = await loadCardsForState();
+        setDirectoryHandle(saved);
+        const { index, cardsState } = await loadCardsForState();
         setCards(cardsState);
+        setSkills(Array.isArray(index.skills) ? index.skills : []);
+        setTreeRows(
+          typeof index.treeRows === "number" && index.treeRows > 0
+            ? index.treeRows
+            : 2
+        );
         setFolderReady(true);
       } else if (perm === "prompt") {
         setNeedsReconnect(true);
@@ -193,34 +113,41 @@ function App() {
 
   const navigate = (target) => {
     setMenuOpen(false);
+    if (target !== "tree") {
+      setTreeEditMode(false);
+    }
     setScreen(target);
+    if (target === "review" || target === "study") {
+      setActiveSkillId(null);
+    }
   };
 
-  /* -------------------------
-     Select Folder
-     ------------------------- */
   async function pickDirectory() {
     const handle = await window.showDirectoryPicker();
     await saveDirectoryHandle(handle);
     if (navigator.storage && navigator.storage.persist) {
-      try { await navigator.storage.persist(); } catch {}
+      try {
+        await navigator.storage.persist();
+      } catch {
+        /* ignore */
+      }
     }
-    directoryHandle = handle;
+    setDirectoryHandle(handle);
     return handle;
   }
 
   /* -------------------------
-     Add Card (uses index)
+     Add Card
      ------------------------- */
   const handleAddCard = async (newCard, files) => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
 
     const index = await readIndex();
     const id = index.nextCardNo++;
     const createdAt = new Date().toISOString();
-
-    // Images
+	const lang = currentLanguage;
     const imageFiles = [];
+
     for (const img of files.images || []) {
       const mediaNo = index.nextMediaNo++;
       const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
@@ -228,7 +155,6 @@ function App() {
       imageFiles.push(fname);
     }
 
-    // Audio (single)
     let audioFile = null;
     if (files.audio) {
       const mediaNo = index.nextMediaNo++;
@@ -239,6 +165,7 @@ function App() {
 
     const cardEntry = {
       id,
+      lang,
       word: newCard.word,
       imageFiles,
       audioFile,
@@ -251,7 +178,6 @@ function App() {
     index.cards.push(cardEntry);
     await writeIndex(index);
 
-    // Build state object with blob URLs
     const imageUrls = [];
     for (const fname of imageFiles) {
       const url = await blobUrlFromDirFile("images", fname);
@@ -266,6 +192,7 @@ function App() {
       ...prev,
       {
         id,
+        lang,
         word: newCard.word,
         images: imageUrls,
         imageFiles,
@@ -281,26 +208,23 @@ function App() {
      Save Card (edit)
      ------------------------- */
   const handleSaveCard = async (updatedCard, files) => {
-    if (!directoryHandle) return;
+    if (!getDirectoryHandle()) return;
     const index = await readIndex();
 
     const idx = index.cards.findIndex((c) => c.id === updatedCard.id);
     if (idx === -1) return;
     const existing = index.cards[idx];
 
-    // Keep list provided by UI (filenames)
     const keepNames = Array.isArray(updatedCard.imagesKeep)
       ? updatedCard.imagesKeep
       : existing.imageFiles;
 
-    // Remove deleted images from disk
     for (const name of existing.imageFiles) {
       if (!keepNames.includes(name)) {
         await deleteFromDirIfExists("images", name);
       }
     }
 
-    // Add new images
     const appended = [];
     for (const img of files.images || []) {
       const mediaNo = index.nextMediaNo++;
@@ -309,10 +233,8 @@ function App() {
       appended.push(fname);
     }
 
-    // Audio: replace only if provided
     let audioFile = existing.audioFile || null;
     if (files.audio) {
-      // optional: delete old
       if (audioFile) await deleteFromDirIfExists("audio", audioFile);
       const mediaNo = index.nextMediaNo++;
       const fname = `${pad6(mediaNo)}_${sanitizeName(files.audio.name)}`;
@@ -322,7 +244,6 @@ function App() {
 
     const finalImageFiles = [...keepNames, ...appended];
 
-    // Update index card
     const updatedAt = new Date().toISOString();
     const nextCard = {
       ...existing,
@@ -335,7 +256,6 @@ function App() {
     index.cards[idx] = nextCard;
     await writeIndex(index);
 
-    // Rebuild state card with URLs
     const imageUrls = [];
     for (const fname of finalImageFiles) {
       const url = await blobUrlFromDirFile("images", fname);
@@ -350,14 +270,13 @@ function App() {
       prev.map((c) =>
         c.id === updatedCard.id
           ? {
-              id: updatedCard.id,
+              ...c,
               word: updatedCard.word,
               images: imageUrls,
               imageFiles: finalImageFiles,
               audio: audioUrl,
               audioFile,
               tags: Array.isArray(updatedCard.tags) ? updatedCard.tags : [],
-              recordings: Array.isArray(c.recordings) ? c.recordings : [],
             }
           : c
       )
@@ -368,21 +287,23 @@ function App() {
      Save pronunciation recording
      ------------------------- */
   async function savePronunciation(cardId, blob, ext = "webm") {
-    if (!directoryHandle || !blob || typeof cardId !== "number") return;
+    if (!getDirectoryHandle() || !blob || typeof cardId !== "number") return;
 
     const stamp = new Date();
     const fileName = `${pad6(cardId)}-${stamp.getFullYear()}${String(
       stamp.getMonth() + 1
-    ).padStart(2, "0")}${String(stamp.getDate()).padStart(2, "0")}-${String(
-      stamp.getHours()
-    ).padStart(2, "0")}${String(stamp.getMinutes()).padStart(
+    ).padStart(2, "0")}${String(stamp.getDate()).padStart(
       2,
       "0"
-    )}${String(stamp.getSeconds()).padStart(2, "0")}.${ext}`;
+    )}-${String(stamp.getHours()).padStart(2, "0")}${String(
+      stamp.getMinutes()
+    ).padStart(2, "0")}${String(stamp.getSeconds()).padStart(
+      2,
+      "0"
+    )}.${ext}`;
 
     await writeFileToDir("recordings", fileName, blob);
 
-    // Append to index card.recordings (newest first)
     const index = await readIndex();
     const card = index.cards.find((c) => c.id === cardId);
     if (card) {
@@ -398,13 +319,20 @@ function App() {
       await writeIndex(index);
     }
 
-    // Update state
     setCards((prev) =>
       prev.map((c) =>
         c.id === cardId
           ? {
               ...c,
-              recordings: [{ file: fileName, ts: stamp.toISOString(), bytes: blob.size || undefined, mime: blob.type || undefined }, ...(c.recordings || [])],
+              recordings: [
+                {
+                  file: fileName,
+                  ts: stamp.toISOString(),
+                  bytes: blob.size || undefined,
+                  mime: blob.type || undefined,
+                },
+                ...(c.recordings || []),
+              ],
             }
           : c
       )
@@ -412,7 +340,155 @@ function App() {
   }
 
   /* -------------------------
-     Folder select UI (unchanged)
+     Skill helpers
+     ------------------------- */
+  const visibleCards = useMemo(() => {
+    const base = languageCards;
+
+    // No skill selected → whole language deck
+    if (!activeSkillId) return base;
+
+    const skill = languageSkills.find((s) => s.id === activeSkillId);
+
+    // Skill id is stale / missing → fall back to full language deck
+    if (!skill) return base;
+
+    // Skill exists but has no cards → show nothing
+    if (!Array.isArray(skill.cardIds) || skill.cardIds.length === 0) {
+      return [];
+    }
+
+    const idSet = new Set(skill.cardIds);
+    return base.filter((c) => idSet.has(c.id));
+  }, [activeSkillId, languageCards, languageSkills]);
+
+  const enterStudyForSkill = (skillId) => {
+    setActiveSkillId(skillId);
+    setScreen("study");
+    setMenuOpen(false);
+  };
+
+  const enterReviewForSkill = (skillId) => {
+    setActiveSkillId(skillId);
+    setScreen("review");
+    setMenuOpen(false);
+  };
+
+  const handleEditSkillSlot = (slotIndex) => {
+    const current = languageSkills.find((s) => s.order === slotIndex) || null;
+    setEditingSkillId(current ? current.id : null);
+    setEditingSkillSlot(slotIndex);
+    setScreen("skillEdit");
+    setMenuOpen(false);
+  };
+
+  const handleAddTreeRow = async () => {
+    if (!getDirectoryHandle()) return;
+    const index = await readIndex();
+    const currentRows =
+      typeof index.treeRows === "number" && index.treeRows > 0
+        ? index.treeRows
+        : treeRows;
+    const nextRows = currentRows + 1;
+    index.treeRows = nextRows;
+    await writeIndex(index);
+    setTreeRows(nextRows);
+  };
+
+  const handleSaveSkill = async (name, cardIds) => {
+    if (!getDirectoryHandle()) return;
+    const index = await readIndex();
+
+    let skillsArr = Array.isArray(index.skills) ? index.skills.slice() : [];
+    let skillId = editingSkillId;
+
+    if (skillId == null) {
+      const nextNo =
+        typeof index.nextSkillNo === "number" && index.nextSkillNo > 0
+          ? index.nextSkillNo
+          : 1;
+      skillId = nextNo;
+      index.nextSkillNo = nextNo + 1;
+    }
+
+    const trimmedName = (name || "").trim() || "Untitled";
+    const order =
+      typeof editingSkillSlot === "number" ? editingSkillSlot : 0;
+    const ids = Array.isArray(cardIds) ? cardIds.slice() : [];
+    const existingIdx = skillsArr.findIndex((s) => s.id === skillId);
+    const now = new Date().toISOString();
+
+    if (existingIdx === -1) {
+      skillsArr.push({
+        id: skillId,
+		lang: currentLanguage,
+        name: trimmedName,
+        cardIds: ids,
+        order,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      const existing = skillsArr[existingIdx];
+      skillsArr[existingIdx] = {
+        ...existing,
+        name: trimmedName,
+        cardIds: ids,
+        order,
+        updatedAt: now,
+      };
+    }
+
+    index.skills = skillsArr;
+    await writeIndex(index);
+
+    setSkills(skillsArr);
+    setEditingSkillId(null);
+    setEditingSkillSlot(null);
+    setScreen("tree");
+  };
+
+  /* -------------------------
+     Mode title (top bar)
+     ------------------------- */
+  const modeTitle = useMemo(() => {
+    let base;
+    switch (screen) {
+      case "review":
+        base = "Review";
+        break;
+      case "study":
+        base = "Study";
+        break;
+      case "cards":
+        base = "Cards";
+        break;
+      case "options":
+        base = "Options";
+        break;
+      case "tree":
+        base = "Tree";
+        break;
+      case "skillEdit":
+        base = "Skill Editor";
+        break;
+      default:
+        base = "Flashcards";
+        break;
+    }
+
+    if ((screen === "review" || screen === "study") && activeSkillId) {
+      const skill = skills.find((s) => s.id === activeSkillId);
+      if (skill && skill.name) {
+        return `${base} :: ${skill.name}`;
+      }
+    }
+
+    return base;
+  }, [screen, activeSkillId, skills]);
+
+  /* -------------------------
+     Folder select UI
      ------------------------- */
   if (!folderReady) {
     return (
@@ -420,16 +496,35 @@ function App() {
         <header className="app-header">
           <button
             className="app-menu-button"
-            onClick={() => setMenuOpen((p) => !p)}
+            onClick={() => setMenuOpen((prev) => !prev)}
           >
             ☰
           </button>
-          <h1 className="app-title">Flashcards</h1>
+
+          <h1 className="app-title">{modeTitle}</h1>
+
+          <div className="app-header-right">
+            {screen === "tree" && (
+              <button
+                className="app-header-action"
+                onClick={() => setTreeEditMode((prev) => !prev)}
+                aria-pressed={treeEditMode}
+                aria-label={
+                  treeEditMode ? "Finish editing tree" : "Edit tree"
+                }
+              >
+                {treeEditMode ? "✅" : "✏️"}
+              </button>
+            )}
+          </div>
         </header>
 
         <main className="app-main">
           <div className="app-picker">
-            <p>No folder selected. Please choose a folder to store your flashcards:</p>
+            <p>
+              No folder selected. Please choose a folder to store your
+              flashcards:
+            </p>
 
             {!needsReconnect && (
               <button
@@ -437,8 +532,18 @@ function App() {
                 onClick={async () => {
                   const handle = await pickDirectory();
                   if (handle) {
-                    const { cardsState } = await loadCardsForState();
+                    setDirectoryHandle(handle);
+                    const { index, cardsState } = await loadCardsForState();
                     setCards(cardsState);
+                    setSkills(
+                      Array.isArray(index.skills) ? index.skills : []
+                    );
+                    setTreeRows(
+                      typeof index.treeRows === "number" &&
+                        index.treeRows > 0
+                        ? index.treeRows
+                        : 2
+                    );
                     setFolderReady(true);
                   }
                 }}
@@ -452,11 +557,22 @@ function App() {
                 className="app-action"
                 onClick={async () => {
                   if (!restorableHandle) return;
-                  const status = await restorableHandle.requestPermission({ mode: "readwrite" });
+                  const status = await restorableHandle.requestPermission({
+                    mode: "readwrite",
+                  });
                   if (status === "granted") {
-                    directoryHandle = restorableHandle;
-                    const { cardsState } = await loadCardsForState();
+                    setDirectoryHandle(restorableHandle);
+                    const { index, cardsState } = await loadCardsForState();
                     setCards(cardsState);
+                    setSkills(
+                      Array.isArray(index.skills) ? index.skills : []
+                    );
+                    setTreeRows(
+                      typeof index.treeRows === "number" &&
+                        index.treeRows > 0
+                        ? index.treeRows
+                        : 2
+                    );
                     setFolderReady(true);
                     setNeedsReconnect(false);
                   }
@@ -472,13 +588,21 @@ function App() {
   }
 
   /* -------------------------
-     Screens
+     Main screen switch
      ------------------------- */
-  let content = null;
+  let content;
   if (screen === "review") {
     content = (
       <ReviewScreen
-        cards={cards}
+        cards={visibleCards}
+        micEnabled={options.micEnabled}
+        onSaveRecording={savePronunciation}
+      />
+    );
+  } else if (screen === "study") {
+    content = (
+      <StudyScreen
+        cards={visibleCards}
         micEnabled={options.micEnabled}
         onSaveRecording={savePronunciation}
       />
@@ -486,7 +610,7 @@ function App() {
   } else if (screen === "cards") {
     content = (
       <CardsScreen
-        cards={cards}
+        cards={languageCards}
         onAddCard={handleAddCard}
         onSaveCard={handleSaveCard}
       />
@@ -494,16 +618,40 @@ function App() {
   } else if (screen === "options") {
     content = (
       <OptionsScreen
-        micEnabled={options.micEnabled}
-        onChangeMic={(v) => setOptions((prev) => ({ ...prev, micEnabled: v }))}
+        options={options}
+        onChangeOptions={(update) =>
+          setOptions((prev) => ({ ...prev, ...update }))
+        }
       />
     );
-  } else if (screen === "study") {
+  } else if (screen === "tree") {
     content = (
-      <StudyScreen
-        cards={cards}
-        micEnabled={options.micEnabled}
-        onSaveRecording={savePronunciation}
+      <TreeScreen
+        skills={languageSkills}
+        treeRows={treeRows}
+        editMode={treeEditMode}
+        onEnterStudy={enterStudyForSkill}
+        onEnterReview={enterReviewForSkill}
+        onEditSlot={handleEditSkillSlot}
+        onAddRow={handleAddTreeRow}
+      />
+    );
+  } else if (screen === "skillEdit") {
+    const existingSkill =
+      editingSkillId != null
+        ? languageSkills.find((s) => s.id === editingSkillId) || null
+        : null;
+    content = (
+      <SkillEditScreen
+        skill={existingSkill}
+        slotIndex={editingSkillSlot}
+        cards={languageCards}
+        onSave={handleSaveSkill}
+        onCancel={() => {
+          setEditingSkillId(null);
+          setEditingSkillSlot(null);
+          setScreen("tree");
+        }}
       />
     );
   }
@@ -517,18 +665,111 @@ function App() {
         >
           ☰
         </button>
-        <h1 className="app-title">Flashcards</h1>
+
+        <h1 className="app-title">{modeTitle}</h1>
+
+        <div className="app-header-right">
+          {screen === "tree" && (
+            <button
+              className="app-header-action"
+              onClick={() => setTreeEditMode((prev) => !prev)}
+              aria-pressed={treeEditMode}
+              aria-label={
+                treeEditMode ? "Finish editing tree" : "Edit tree"
+              }
+            >
+              {treeEditMode ? "✅" : "✏️"}
+            </button>
+          )}
+        </div>
       </header>
 
-      {menuOpen && <div className="app-backdrop" onClick={() => setMenuOpen(false)} />}
+      {menuOpen && (
+        <div className="app-backdrop" onClick={() => setMenuOpen(false)} />
+      )}
 
-      <nav className={`app-menu ${menuOpen ? "open" : ""}`} aria-hidden={!menuOpen}>
+      <nav
+        className={`app-menu ${menuOpen ? "open" : ""}`}
+        aria-hidden={!menuOpen}
+      >
         <ul className="app-menu-list">
-          <li><button className="app-menu-item" onClick={() => navigate("review")}>Review</button></li>
-          <li><button className="app-menu-item" onClick={() => navigate("study")}>Study</button></li>
-          <li><button className="app-menu-item" onClick={() => navigate("cards")}>Cards</button></li>
-          <li><button className="app-menu-item" onClick={() => navigate("options")}>Options</button></li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("review")}
+            >
+              Review
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("study")}
+            >
+              Study
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("cards")}
+            >
+              Cards
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("tree")}
+            >
+              Tree
+            </button>
+          </li>
+          <li>
+            <button
+              className="app-menu-item"
+              onClick={() => navigate("options")}
+            >
+              Options
+            </button>
+          </li>
         </ul>
+
+        <div className="app-menu-lang">
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "uk" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("uk")}
+            aria-label="Ukrainian"
+          >
+            🇺🇦
+          </button>
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "es" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("es")}
+            aria-label="Spanish"
+          >
+            🇪🇸
+          </button>
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "zh" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("zh")}
+            aria-label="Mandarin"
+          >
+            🇨🇳
+          </button>
+        </div>
       </nav>
 
       <main className="app-main">{content}</main>
