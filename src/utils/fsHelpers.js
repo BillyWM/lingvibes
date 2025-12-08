@@ -182,8 +182,12 @@ export async function loadCardsForState() {
     if (c.audioFile) {
       audioUrl = await blobUrlFromDirFile("audio", c.audioFile);
     }
+
+    const lang = c.lang || "uk"; // default legacy cards to Ukrainian
+
     cardsState.push({
       id: c.id,
+      lang,
       word: c.word,
       images: imageUrls,
       imageFiles: c.imageFiles || [],

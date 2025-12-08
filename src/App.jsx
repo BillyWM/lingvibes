@@ -39,6 +39,8 @@ function App() {
   const [editingSkillId, setEditingSkillId] = useState(null);
   const [editingSkillSlot, setEditingSkillSlot] = useState(null);
   const [treeEditMode, setTreeEditMode] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState("uk");
+
 
   // Options persisted in localStorage
   const [options, setOptions] = useState(() => {
@@ -55,6 +57,30 @@ function App() {
       ...base,
     };
   });
+
+  const languageCards = useMemo(
+    () =>
+      cards.filter((c) => {
+        const lang = c.lang || "uk";
+        return lang === currentLanguage;
+      }),
+    [cards, currentLanguage]
+  );
+
+  const languageSkills = useMemo(
+    () =>
+      skills.filter((s) => {
+        const lang = s.lang || "uk";
+        return lang === currentLanguage;
+      }),
+    [skills, currentLanguage]
+  );
+
+  // When switching languages, drop any active skill selection
+  useEffect(() => {
+    setActiveSkillId(null);
+  }, [currentLanguage]);
+
 
   useEffect(() => {
     localStorage.setItem("options", JSON.stringify(options));
@@ -119,8 +145,9 @@ function App() {
     const index = await readIndex();
     const id = index.nextCardNo++;
     const createdAt = new Date().toISOString();
-
+	const lang = currentLanguage;
     const imageFiles = [];
+
     for (const img of files.images || []) {
       const mediaNo = index.nextMediaNo++;
       const fname = `${pad6(mediaNo)}_${sanitizeName(img.name)}`;
@@ -138,6 +165,7 @@ function App() {
 
     const cardEntry = {
       id,
+      lang,
       word: newCard.word,
       imageFiles,
       audioFile,
@@ -164,6 +192,7 @@ function App() {
       ...prev,
       {
         id,
+        lang,
         word: newCard.word,
         images: imageUrls,
         imageFiles,
@@ -314,13 +343,15 @@ function App() {
      Skill helpers
      ------------------------- */
   const visibleCards = useMemo(() => {
-    // No skill selected → global deck
-    if (!activeSkillId) return cards;
+    const base = languageCards;
 
-    const skill = skills.find((s) => s.id === activeSkillId);
+    // No skill selected → whole language deck
+    if (!activeSkillId) return base;
 
-    // Skill id is stale / missing → fall back to global
-    if (!skill) return cards;
+    const skill = languageSkills.find((s) => s.id === activeSkillId);
+
+    // Skill id is stale / missing → fall back to full language deck
+    if (!skill) return base;
 
     // Skill exists but has no cards → show nothing
     if (!Array.isArray(skill.cardIds) || skill.cardIds.length === 0) {
@@ -328,8 +359,8 @@ function App() {
     }
 
     const idSet = new Set(skill.cardIds);
-    return cards.filter((c) => idSet.has(c.id));
-  }, [activeSkillId, skills, cards]);
+    return base.filter((c) => idSet.has(c.id));
+  }, [activeSkillId, languageCards, languageSkills]);
 
   const enterStudyForSkill = (skillId) => {
     setActiveSkillId(skillId);
@@ -344,7 +375,7 @@ function App() {
   };
 
   const handleEditSkillSlot = (slotIndex) => {
-    const current = skills.find((s) => s.order === slotIndex) || null;
+    const current = languageSkills.find((s) => s.order === slotIndex) || null;
     setEditingSkillId(current ? current.id : null);
     setEditingSkillSlot(slotIndex);
     setScreen("skillEdit");
@@ -390,6 +421,7 @@ function App() {
     if (existingIdx === -1) {
       skillsArr.push({
         id: skillId,
+		lang: currentLanguage,
         name: trimmedName,
         cardIds: ids,
         order,
@@ -578,7 +610,7 @@ function App() {
   } else if (screen === "cards") {
     content = (
       <CardsScreen
-        cards={cards}
+        cards={languageCards}
         onAddCard={handleAddCard}
         onSaveCard={handleSaveCard}
       />
@@ -595,7 +627,7 @@ function App() {
   } else if (screen === "tree") {
     content = (
       <TreeScreen
-        skills={skills}
+        skills={languageSkills}
         treeRows={treeRows}
         editMode={treeEditMode}
         onEnterStudy={enterStudyForSkill}
@@ -607,13 +639,13 @@ function App() {
   } else if (screen === "skillEdit") {
     const existingSkill =
       editingSkillId != null
-        ? skills.find((s) => s.id === editingSkillId) || null
+        ? languageSkills.find((s) => s.id === editingSkillId) || null
         : null;
     content = (
       <SkillEditScreen
         skill={existingSkill}
         slotIndex={editingSkillSlot}
-        cards={cards}
+        cards={languageCards}
         onSave={handleSaveSkill}
         onCancel={() => {
           setEditingSkillId(null);
@@ -702,6 +734,42 @@ function App() {
             </button>
           </li>
         </ul>
+
+        <div className="app-menu-lang">
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "uk" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("uk")}
+            aria-label="Ukrainian"
+          >
+            🇺🇦
+          </button>
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "es" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("es")}
+            aria-label="Spanish"
+          >
+            🇪🇸
+          </button>
+          <button
+            type="button"
+            className={
+              "app-lang-button" +
+              (currentLanguage === "zh" ? " app-lang-button--active" : "")
+            }
+            onClick={() => setCurrentLanguage("zh")}
+            aria-label="Mandarin"
+          >
+            🇨🇳
+          </button>
+        </div>
       </nav>
 
       <main className="app-main">{content}</main>

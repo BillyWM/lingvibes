@@ -75,7 +75,6 @@
   z-index: 9; /* below the menu, above content */
 }
 
-/* Sliding side menu */
 .app-menu {
   position: absolute;
   top: 0;
@@ -86,6 +85,9 @@
   color: #fff;
   padding: 1rem;
   z-index: 10;
+
+  display: flex;
+  flex-direction: column;
 
   transform: translateX(-105%);
   opacity: 0;
@@ -103,7 +105,38 @@
   list-style: none;
   padding: 0;
   margin: 0;
+  flex: 1; /* so the language strip can sit at the bottom */
 }
+
+.app-menu-lang {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  padding-bottom: 1.5rem; /* lift them slightly above bottom edge */
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  justify-content: center; /* keep flags together */
+  gap: 6px;                /* small space between flags */
+}
+
+.app-lang-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  background: #444;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-lang-button--active {
+  background: #f0c040;
+  color: #000;
+}
+
 
 /* Bigger, touch-friendly menu items */
 .app-menu-item {
